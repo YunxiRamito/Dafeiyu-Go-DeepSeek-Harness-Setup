@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="DshInstaller.Pages.UninstallPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:DshInstaller.Controls"
+    Background="Transparent">
+
+    <!-- 卸载第一步:只问一句"确定吗"。
+         具体删什么留给下一页,别让用户在"要不要卸载"这件事上还要做选择题。 -->
+    <controls:PageScaffold x:Name="Scaffold" Title="" Subtitle="">
+        <StackPanel Spacing="14" VerticalAlignment="Top">
+
+            <Border CornerRadius="{ThemeResource CardCornerRadius}"
+                    Background="{ThemeResource CardBackgroundBrush}"
+                    BorderBrush="{ThemeResource CardBorderBrush}"
+                    BorderThickness="1"
+                    Padding="16,12">
+                <StackPanel Spacing="6">
+                    <TextBlock x:Name="QuestionText" FontSize="14" FontWeight="SemiBold"
+                               TextWrapping="Wrap"
+                               Foreground="{ThemeResource PrimaryTextBrush}" />
+                    <TextBlock x:Name="DetailText" FontSize="12" TextWrapping="Wrap"
+                               Foreground="{ThemeResource SecondaryTextBrush}" />
+                </StackPanel>
+            </Border>
+
+            <Border CornerRadius="{ThemeResource CardCornerRadius}"
+                    Background="{ThemeResource CardBackgroundBrush}"
+                    BorderBrush="{ThemeResource CardBorderBrush}"
+                    BorderThickness="1"
+                    Padding="16,12">
+                <StackPanel Spacing="5">
+                    <TextBlock x:Name="KeepLabel" FontSize="12"
+                               Foreground="{ThemeResource SecondaryTextBrush}" />
+                    <TextBlock x:Name="KeepText" FontSize="12" TextWrapping="Wrap"
+                               Foreground="{ThemeResource TertiaryTextBrush}" />
+                </StackPanel>
+            </Border>
+        </StackPanel>
+    </controls:PageScaffold>
+</Page>

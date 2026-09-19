@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>DshInstaller.Shared</RootNamespace>
+    <AssemblyName>DshInstaller.Shared</AssemblyName>
+    <Version>$(InstallerVersion)</Version>
+    <AssemblyVersion>$(InstallerVersionFull)</AssemblyVersion>
+    <FileVersion>$(InstallerVersionFull)</FileVersion>
+    <Authors>$(Authors)</Authors>
+    <Company>$(Company)</Company>
+    <Product>DeepSeek Harness Installer</Product>
+    <Platforms>x64</Platforms>
+    <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+  </PropertyGroup>
+
+</Project>

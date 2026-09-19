@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="DshInstaller.Pages.LauncherLocationPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:DshInstaller.Controls"
+    Background="Transparent">
+
+    <controls:PageScaffold x:Name="Scaffold" Title="" Subtitle="">
+        <StackPanel Spacing="14">
+
+            <Border CornerRadius="{ThemeResource CardCornerRadius}"
+                    Background="{ThemeResource CardBackgroundBrush}"
+                    BorderBrush="{ThemeResource CardBorderBrush}"
+                    BorderThickness="1"
+                    Padding="16,14">
+                <StackPanel Spacing="12">
+                    <Grid ColumnSpacing="12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <TextBlock x:Name="PathLabel" Grid.Column="0" VerticalAlignment="Center"
+                                   FontSize="12.5"
+                                   Foreground="{ThemeResource SecondaryTextBrush}" />
+                        <TextBox x:Name="PathBox" Grid.Column="1" Height="32"
+                                 VerticalAlignment="Center" TextChanged="OnPathChanged" />
+                        <Button x:Name="BrowseButton" Grid.Column="2" Height="32" MinWidth="76"
+                                Click="OnBrowseClick" />
+                    </Grid>
+
+                    <TextBlock x:Name="HintText" FontSize="11.5" TextWrapping="Wrap"
+                               Foreground="{ThemeResource TertiaryTextBrush}" />
+                </StackPanel>
+            </Border>
+
+            <!-- 顺手要做的三件事 -->
+            <Border CornerRadius="{ThemeResource CardCornerRadius}"
+                    Background="{ThemeResource CardBackgroundBrush}"
+                    BorderBrush="{ThemeResource CardBorderBrush}"
+                    BorderThickness="1"
+                    Padding="16,13">
+                <StackPanel Spacing="8">
+                    <TextBlock x:Name="ExtrasLabel" FontSize="12.5"
+                               Foreground="{ThemeResource SecondaryTextBrush}" />
+                    <CheckBox x:Name="DesktopBox" IsChecked="True" />
+                    <CheckBox x:Name="StartMenuBox" IsChecked="True" />
+                    <CheckBox x:Name="AutostartBox" IsChecked="True" />
+                </StackPanel>
+            </Border>
+
+            <TextBlock x:Name="WarnText" FontSize="11.5" TextWrapping="Wrap"
+                       Foreground="{ThemeResource WarningBrush}" />
+        </StackPanel>
+    </controls:PageScaffold>
+</Page>

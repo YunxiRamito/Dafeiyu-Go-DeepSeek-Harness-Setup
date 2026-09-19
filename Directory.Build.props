@@ -1,0 +1,15 @@
+<Project>
+  <PropertyGroup>
+    <InstallerVersion>1.0.0</InstallerVersion>
+    <InstallerVersionFull>1.0.0.0</InstallerVersionFull>
+    <LauncherVersion>1.3.9</LauncherVersion>
+    <DshPackage>@deepseek-ai/dsh</DshPackage>
+    <DshPackageVersion>^0.1.5-rc.1</DshPackageVersion>
+    <NodeLtsMajor>22</NodeLtsMajor>
+    <NodeMinimumVersion>22.13.0</NodeMinimumVersion>
+    <WindowsMinimumBuild>17763</WindowsMinimumBuild>
+    <WindowsAppRuntimeVersion>1.8.260804001</WindowsAppRuntimeVersion>
+    <Company>高性能萝卜子鲸鲸有限公司</Company>
+    <Authors>Deepseek/KitamaruRamito</Authors>
+  </PropertyGroup>
+</Project>

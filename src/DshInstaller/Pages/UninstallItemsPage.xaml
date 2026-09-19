@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="DshInstaller.Pages.UninstallItemsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:DshInstaller.Controls"
+    Background="Transparent">
+
+    <!-- 卸载第二步:逐项选择删什么、留什么。
+         内容全部来自安装时留下的状态文件 —— 只有"本安装程序装的东西"才提供卸载,
+         别的(用户自己装的 Node / Git 之类)一律禁用并说明,免得误删。 -->
+    <controls:PageScaffold x:Name="Scaffold" Title="" Subtitle="">
+        <Grid RowSpacing="12">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <Border Grid.Row="0" CornerRadius="{ThemeResource CardCornerRadius}"
+                    Background="{ThemeResource CardBackgroundBrush}"
+                    BorderBrush="{ThemeResource CardBorderBrush}"
+                    BorderThickness="1"
+                    Padding="14,8">
+                <ScrollViewer VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollMode="Disabled">
+                    <StackPanel x:Name="ItemsHost" />
+                </ScrollViewer>
+            </Border>
+
+            <Border Grid.Row="1" CornerRadius="{ThemeResource CardCornerRadius}"
+                    Background="{ThemeResource CardBackgroundBrush}"
+                    BorderBrush="{ThemeResource CardBorderBrush}"
+                    BorderThickness="1"
+                    Padding="14,12"
+                    VerticalAlignment="Top">
+                <StackPanel Spacing="6">
+                    <TextBlock x:Name="OptionsLabel" FontSize="12.5"
+                               Foreground="{ThemeResource SecondaryTextBrush}" />
+
+                    <CheckBox x:Name="UserDataBox" IsChecked="False" />
+                    <TextBlock x:Name="UserDataHint" FontSize="10.5"
+                               Margin="30,-4,0,0"
+                               TextWrapping="Wrap"
+                               Foreground="{ThemeResource TertiaryTextBrush}" />
+                </StackPanel>
+            </Border>
+        </Grid>
+    </controls:PageScaffold>
+</Page>

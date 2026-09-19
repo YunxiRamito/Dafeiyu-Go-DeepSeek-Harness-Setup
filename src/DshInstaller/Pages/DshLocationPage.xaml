@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="DshInstaller.Pages.DshLocationPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:DshInstaller.Controls"
+    Background="Transparent">
+
+    <controls:PageScaffold x:Name="Scaffold" Title="" Subtitle="">
+        <StackPanel Spacing="14">
+
+            <Border CornerRadius="{ThemeResource CardCornerRadius}"
+                    Background="{ThemeResource CardBackgroundBrush}"
+                    BorderBrush="{ThemeResource CardBorderBrush}"
+                    BorderThickness="1"
+                    Padding="16,14">
+                <StackPanel Spacing="12">
+                    <Grid ColumnSpacing="12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <TextBlock x:Name="PathLabel" Grid.Column="0" VerticalAlignment="Center"
+                                   FontSize="12.5"
+                                   Foreground="{ThemeResource SecondaryTextBrush}" />
+                        <TextBox x:Name="PathBox" Grid.Column="1" Height="32"
+                                 VerticalAlignment="Center" />
+                        <Button x:Name="BrowseButton" Grid.Column="2" Height="32" MinWidth="76"
+                                Click="OnBrowseClick" />
+                    </Grid>
+
+                    <TextBlock x:Name="HintText" FontSize="11.5" TextWrapping="Wrap"
+                               Foreground="{ThemeResource TertiaryTextBrush}" />
+                </StackPanel>
+            </Border>
+
+            <!-- 已装 DSH 的话给一条"直接用现有的" -->
+            <Border x:Name="ExistingBox" Visibility="Collapsed"
+                    CornerRadius="{ThemeResource CardCornerRadius}"
+                    Background="{ThemeResource AccentSoftBrush}"
+                    Padding="16,13">
+                <StackPanel Spacing="9">
+                    <StackPanel Orientation="Horizontal" Spacing="9">
+                        <FontIcon Glyph="&#xE73E;" FontSize="13" VerticalAlignment="Center"
+                                  Foreground="{ThemeResource SuccessBrush}" />
+                        <TextBlock x:Name="ExistingTitle" FontSize="13" FontWeight="SemiBold"
+                                   VerticalAlignment="Center"
+                                   Foreground="{ThemeResource PrimaryTextBrush}" />
+                    </StackPanel>
+                    <TextBlock x:Name="ExistingPath" FontSize="11.5" TextWrapping="Wrap"
+                               FontFamily="Consolas"
+                               Foreground="{ThemeResource SecondaryTextBrush}" />
+                    <CheckBox x:Name="UseExistingBox" Checked="OnUseExistingChanged"
+                              Unchecked="OnUseExistingChanged" />
+                </StackPanel>
+            </Border>
+
+            <!-- 磁盘占用提示 -->
+            <TextBlock x:Name="DiskHint" FontSize="11.5" TextWrapping="Wrap"
+                       Foreground="{ThemeResource TertiaryTextBrush}" />
+        </StackPanel>
+    </controls:PageScaffold>
+</Page>

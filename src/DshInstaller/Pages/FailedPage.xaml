@@ -1,0 +1,63 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="DshInstaller.Pages.FailedPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:DshInstaller.Controls"
+    Background="Transparent">
+
+    <controls:PageScaffold x:Name="Scaffold" Title="" Subtitle="">
+        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollMode="Disabled">
+            <StackPanel Spacing="12">
+
+                <!-- 红色叉叉。和完成页的对勾同一套视觉语言,一眼就知道这次没成。 -->
+                <Grid Width="64" Height="64" HorizontalAlignment="Center" Margin="0,4,0,2">
+                    <Ellipse Fill="#2EF03A3A" />
+                    <Ellipse Width="46" Height="46" Fill="#F03A3A" Opacity="0.92" />
+                    <FontIcon Glyph="&#xE711;" FontSize="22" Foreground="White"
+                              HorizontalAlignment="Center" VerticalAlignment="Center" />
+                </Grid>
+
+                <!-- 失败在哪一步、为什么。
+                     微软《Setup》指南要求:错误页要给"用户能自己动手"的信息,而不是只说一句出错了。 -->
+                <Border x:Name="ReasonBox" CornerRadius="{ThemeResource CardCornerRadius}"
+                        Background="{ThemeResource CardBackgroundBrush}"
+                        BorderBrush="{ThemeResource CardBorderBrush}"
+                        BorderThickness="1"
+                        Padding="14,10">
+                    <StackPanel Spacing="6">
+                        <TextBlock x:Name="ReasonLabel" FontSize="12"
+                                   Foreground="{ThemeResource SecondaryTextBrush}" />
+                        <StackPanel x:Name="ReasonsHost" Spacing="5" />
+                    </StackPanel>
+                </Border>
+
+                <!-- 回滚说明 -->
+                <Border x:Name="RollbackBox" CornerRadius="{ThemeResource CardCornerRadius}"
+                        Background="{ThemeResource CardBackgroundBrush}"
+                        BorderBrush="{ThemeResource CardBorderBrush}"
+                        BorderThickness="1"
+                        Padding="14,10">
+                    <StackPanel Spacing="5">
+                        <TextBlock x:Name="RollbackLabel" FontSize="12"
+                                   Foreground="{ThemeResource SecondaryTextBrush}" />
+                        <StackPanel x:Name="RollbackHost" Spacing="3" />
+                    </StackPanel>
+                </Border>
+
+                <!-- 手动下载:自动装不上时,给人一条明路 -->
+                <Border x:Name="ManualBox" CornerRadius="{ThemeResource CardCornerRadius}"
+                        Background="{ThemeResource CardBackgroundBrush}"
+                        BorderBrush="{ThemeResource CardBorderBrush}"
+                        BorderThickness="1"
+                        Padding="14,10">
+                    <StackPanel Spacing="4">
+                        <TextBlock x:Name="ManualLabel" FontSize="12"
+                                   Foreground="{ThemeResource SecondaryTextBrush}" />
+                        <StackPanel x:Name="LinksHost" Spacing="2" />
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
+    </controls:PageScaffold>
+</Page>

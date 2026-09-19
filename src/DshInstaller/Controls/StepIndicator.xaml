@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="DshInstaller.Controls.StepIndicator"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- 步骤条:走过的用实心圆点,当前那步拉长成胶囊,未到的用淡色。
+         宽度靠代码算,因为步数固定但圆点尺寸不同。 -->
+    <StackPanel x:Name="Host" Orientation="Horizontal" Spacing="8" />
+</UserControl>

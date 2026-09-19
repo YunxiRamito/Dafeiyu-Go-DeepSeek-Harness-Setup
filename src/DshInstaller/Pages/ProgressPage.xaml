@@ -1,0 +1,82 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="DshInstaller.Pages.ProgressPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:DshInstaller.Controls"
+    Background="Transparent">
+
+    <controls:PageScaffold x:Name="Scaffold" Title="" Subtitle="">
+        <Grid RowSpacing="12">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <!--
+              进度区。排版依据微软《Setup》体验指南:
+                · 「当前步骤说明放在进度条**上方**」,用动词开头的短句 + 省略号
+                · 「只用一条确定进度条」,所以这里只有一根,不做第二条子进度条
+                · 「别塞 GUID、具体文件名这类只有技术支持才关心的细节」
+              字节数与速度是例外:它回答的是"要不要等、快好了吗",属于用户真正关心的信息,
+              所以放在条的下面,小字淡色当次要信息。
+            -->
+            <StackPanel Grid.Row="0" Spacing="7">
+                <!-- 第一行:当前动作(左) + 百分比(右) -->
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <TextBlock x:Name="CurrentTaskText" Grid.Column="0"
+                               FontSize="13.5" FontWeight="SemiBold"
+                               TextWrapping="Wrap"
+                               VerticalAlignment="Bottom"
+                               Foreground="{ThemeResource PrimaryTextBrush}" />
+
+                    <TextBlock x:Name="PercentText" Grid.Column="1" Text="0%"
+                               FontSize="13.5" FontWeight="SemiBold"
+                               MinWidth="48" TextAlignment="Right"
+                               Margin="12,0,0,0"
+                               VerticalAlignment="Bottom"
+                               Foreground="{ThemeResource PrimaryTextBrush}" />
+                </Grid>
+
+                <!-- 第二行:进度条 -->
+                <ProgressBar x:Name="TotalBar" Height="4"
+                             Minimum="0" Maximum="100" Value="0"
+                             Foreground="{ThemeResource AccentBrush}" />
+
+                <!-- 第三行:次要细节(下载速度 / 字节数 / 子阶段) -->
+                <TextBlock x:Name="CurrentDetailText" FontSize="11.5"
+                           TextWrapping="Wrap" MinHeight="16"
+                           Foreground="{ThemeResource TertiaryTextBrush}" />
+            </StackPanel>
+
+            <!-- 任务清单:内容会比窗口高,给滚动兜底 -->
+            <Border Grid.Row="1" CornerRadius="{ThemeResource CardCornerRadius}"
+                    Background="{ThemeResource CardBackgroundBrush}"
+                    BorderBrush="{ThemeResource CardBorderBrush}"
+                    BorderThickness="1"
+                    Padding="14,8">
+                <ScrollViewer VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollMode="Disabled">
+                    <StackPanel x:Name="RowsHost" />
+                </ScrollViewer>
+            </Border>
+
+            <!-- 日志。取消键已挪到向导页脚右下角(见 IWizardPageFooterAction),
+                 和"下一步"同位置,符合向导的整体布局。 -->
+            <Expander x:Name="LogExpander" Grid.Row="2" HorizontalAlignment="Stretch"
+                      VerticalAlignment="Bottom">
+                <ScrollViewer x:Name="LogScroller" Height="96" VerticalScrollBarVisibility="Auto">
+                    <TextBlock x:Name="LogText" FontFamily="Consolas" FontSize="11"
+                               TextWrapping="Wrap"
+                               Foreground="{ThemeResource TertiaryTextBrush}" />
+                </ScrollViewer>
+            </Expander>
+        </Grid>
+    </controls:PageScaffold>
+</Page>

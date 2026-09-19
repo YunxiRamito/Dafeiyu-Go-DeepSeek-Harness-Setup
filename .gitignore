@@ -1,0 +1,19 @@
+# 构建产物
+dist/
+bin/
+obj/
+
+# 打包进来的启动器(由 build.ps1 从 DeepSeek Starter 的产物生成)
+payload/*.zip
+
+# 本机状态
+*.user
+.vs/
+.idea/
+*.log
+
+# 构建产物与临时备份
+artifacts/
+*.bak
+*.bak2
+*.old

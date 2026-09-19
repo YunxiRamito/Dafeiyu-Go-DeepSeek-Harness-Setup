@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="DshInstaller.Pages.DetectPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:DshInstaller.Controls"
+    Background="Transparent">
+
+    <controls:PageScaffold x:Name="Scaffold" Title="" Subtitle="">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <!-- 检测进度:一根细条 + 一行字。检测完把细条收起来,免得满值黑条看着像分割线 -->
+            <StackPanel x:Name="ProgressArea" Grid.Row="0" Spacing="6" Margin="0,0,0,10">
+                <ProgressBar x:Name="CheckProgress" Height="2" Minimum="0" Maximum="100" Value="0"
+                             Foreground="{ThemeResource AccentBrush}" />
+                <TextBlock x:Name="ProgressText" FontSize="12"
+                           Foreground="{ThemeResource TertiaryTextBrush}" />
+            </StackPanel>
+
+            <!-- 组件列表:两列排,9 项也能一屏放下 -->
+            <Border Grid.Row="1" CornerRadius="{ThemeResource CardCornerRadius}"
+                    Background="{ThemeResource CardBackgroundBrush}"
+                    BorderBrush="{ThemeResource CardBorderBrush}"
+                    BorderThickness="1"
+                    Padding="16,10">
+                <Grid x:Name="RowsHost" ColumnSpacing="20" VerticalAlignment="Top" />
+            </Border>
+
+            <!-- 结论条 -->
+            <Border x:Name="VerdictBox" Grid.Row="2" Visibility="Collapsed"
+                    Margin="0,14,0,0"
+                    CornerRadius="8" Padding="14,11">
+                <StackPanel Orientation="Horizontal" Spacing="9">
+                    <FontIcon x:Name="VerdictIcon" FontSize="14" Glyph="&#xE73E;"
+                              VerticalAlignment="Center" />
+                    <TextBlock x:Name="VerdictText" FontSize="12.5" TextWrapping="Wrap"
+                               VerticalAlignment="Center" />
+                </StackPanel>
+            </Border>
+        </Grid>
+    </controls:PageScaffold>
+</Page>

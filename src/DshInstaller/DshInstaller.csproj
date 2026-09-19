@@ -1,0 +1,48 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
+
+    <RootNamespace>DshInstaller</RootNamespace>
+    <AssemblyName>DSH-Installer</AssemblyName>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- 图标由 tools\make-icon.ps1 生成(圆角蓝底 + 白色鲸鱼) -->
+    <ApplicationIcon>..\..\assets\DSHInstaller.ico</ApplicationIcon>
+    <Platforms>x64</Platforms>
+    <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
+    <UseWinUI>true</UseWinUI>
+    <!-- 必须开:关掉的话 dotnet publish 不会把 .xbf(编译后的 XAML)和 .pri 带进输出,
+         运行时会 XamlParseException: XAML parsing failed,页面全加载不出来。 -->
+    <EnableMsixTooling>true</EnableMsixTooling>
+    <!-- 主程序自己写了 Main,别让 XAML 生成一个(跟启动器一致) -->
+    <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
+    <UseWindowsForms>false</UseWindowsForms>
+    <WindowsPackageType>None</WindowsPackageType>
+    <WindowsAppSDKSelfContained>false</WindowsAppSDKSelfContained>
+    <SelfContained>false</SelfContained>
+    <PublishSingleFile>false</PublishSingleFile>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <Version>$(InstallerVersion)</Version>
+    <AssemblyVersion>$(InstallerVersionFull)</AssemblyVersion>
+    <FileVersion>$(InstallerVersionFull)</FileVersion>
+    <Authors>$(Authors)</Authors>
+    <Company>$(Company)</Company>
+    <Product>DeepSeek Harness Installer</Product>
+    <Description>DeepSeek Harness 一键安装程序</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.260804001" />
+    <!-- 只为了弹原生错误框(引导运行库缺失时 WinUI 还没法用) -->
+    <FrameworkReference Include="Microsoft.WindowsDesktop.App.WindowsForms" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\DshInstaller.Shared\DshInstaller.Shared.csproj" />
+  </ItemGroup>
+
+</Project>
