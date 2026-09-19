@@ -38,11 +38,16 @@ $uninstallExe = Join-Path $dist 'DSH-Uninstall.exe'
 $setupExe = Join-Path $dist 'DSH-Installer-Setup.exe'
 $icon = Join-Path $assets 'DSHInstaller.ico'
 
+# 优先用本机那套便携 SDK;CI 上没有这个目录,就退回 PATH 里的 dotnet
 $dotnet = 'G:\DeepSeek DSH\.tools\dotnet\dotnet.exe'
-$csc = 'C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe'
-$env:NUGET_PACKAGES = 'G:\DeepSeek DSH\.nuget-packages'
+if (-not (Test-Path -LiteralPath $dotnet)) { $dotnet = 'dotnet' }
 
-if (-not (Test-Path -LiteralPath $dotnet)) { throw "找不到 .NET SDK:$dotnet" }
+$csc = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
+
+# 本机有离线 NuGet 缓存就用它(省流量);CI 上没有这个目录,交给默认缓存
+$localNuget = 'G:\DeepSeek DSH\.nuget-packages'
+if (Test-Path -LiteralPath $localNuget) { $env:NUGET_PACKAGES = $localNuget }
+
 if (-not (Test-Path -LiteralPath $csc)) { throw "找不到 csc:$csc" }
 if (-not (Test-Path -LiteralPath $icon)) {
     Write-Host '图标不存在,先跑一次 tools\make-icon.ps1' -ForegroundColor Yellow

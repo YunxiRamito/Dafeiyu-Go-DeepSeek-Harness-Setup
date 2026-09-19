@@ -1,0 +1,91 @@
+name: release
+
+# 打 tag 就自动出包并建 Release —— 和启动器仓库(DSH-Launcher)那套是一个套路。
+#
+# 版本号必须和 Directory.Build.props 里的 <InstallerVersion> 一致,否则直接失败
+# (版本号在仓库里只有那一个地方写,别处都是引用它)。
+#
+# 用法:
+#   git tag v1.0.0
+#   git push origin v1.0.0
+#
+# 产物:DSH-Installer-Setup.exe —— 单个 exe,双击即用。
+# 本地想先出包看效果,直接跑 .\pack-release.ps1。
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: 检出
+        uses: actions/checkout@v4
+
+      - name: 装 .NET 8 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: 读版本并校验 tag
+        id: meta
+        shell: pwsh
+        run: |
+          $props = Get-Content Directory.Build.props -Raw
+          $version = ([regex]::Match($props, '<InstallerVersion>([^<]+)</InstallerVersion>')).Groups[1].Value.Trim()
+          if (-not $version) { throw 'Directory.Build.props 里没读到 InstallerVersion' }
+
+          $tag = '${{ github.ref_name }}'
+          Write-Host "props=$version  tag=$tag"
+
+          # workflow_dispatch 手动跑的时候没有 tag,跳过这项校验
+          if ($tag -like 'v*' -and $tag -ne "v$version") {
+            throw "tag($tag) 和 Directory.Build.props 里的版本(v$version) 对不上"
+          }
+
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "setup=DSH-Installer-Setup.exe" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: 打包(-NoDesktop:CI 上没有桌面可拷)
+        shell: pwsh
+        run: .\pack-release.ps1 -NoDesktop
+
+      - name: 校验产物并算哈希
+        id: pack
+        shell: pwsh
+        run: |
+          $exe = 'dist\DSH-Installer-Setup.exe'
+          if (-not (Test-Path $exe)) { throw "没有产出 $exe" }
+
+          # 体积自检:框架依赖 + 按需下运行库,应该在十几 MB。
+          # 要是打出自包含那种上百 MB 的包,说明自包含开关又被人打开了。
+          $mb = [math]::Round((Get-Item $exe).Length / 1MB, 1)
+          Write-Host "体积 $mb MB"
+          if ($mb -gt 40) { throw "包有 $mb MB,像是又把运行库打进去了" }
+
+          $hash = (Get-FileHash $exe -Algorithm SHA256).Hash.ToLower()
+          Write-Host "SHA256: $hash"
+          "sha256=$hash" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: 发 Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/DSH-Installer-Setup.exe
+          generate_release_notes: true
+          body: |
+            单文件安装包 `DSH-Installer-Setup.exe`(约 11 MB)。
+
+            双击即用:安装器会先检查 .NET 8 桌面运行时与 Windows App Runtime,
+            缺哪个下哪个,装好之后再拉起向导。
+
+            SHA256: `${{ steps.pack.outputs.sha256 }}`
+
+            **未做代码签名**,首次运行会有 SmartScreen 提示 ——
+            点「更多信息」→「仍要运行」即可,详见 README。
