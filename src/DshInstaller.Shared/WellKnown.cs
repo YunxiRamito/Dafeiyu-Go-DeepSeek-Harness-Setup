@@ -7,7 +7,31 @@ namespace DshInstaller.Shared
     {
         public const string ProductName = "DeepSeek Harness";
         public const string InstallerName = "DSH Installer";
-        public const string InstallerVersion = "1.0.0";
+
+        /// <summary>
+        /// 安装器版本号。
+        ///
+        /// **从程序集版本读,不手写** —— 以前这里硬编码一份、Directory.Build.props 里
+        /// 又写一份,改版本号得改两处,漏一处就会出现"界面写着 1.0.1、注册表 DisplayVersion
+        /// 却记着 1.0.0"这种事。程序集版本由 csproj 从 Directory.Build.props 注入,
+        /// 所以那边才是唯一来源。
+        /// </summary>
+        public static string InstallerVersion
+        {
+            get
+            {
+                try
+                {
+                    Version version = typeof(WellKnown).Assembly.GetName().Version;
+                    return version == null ? "0.0.0" : version.ToString(3);
+                }
+                catch
+                {
+                    return "0.0.0";
+                }
+            }
+        }
+
         public const string LauncherVersion = "1.3.9";
 
         /// <summary>DSH 的 npm 包名。</summary>
