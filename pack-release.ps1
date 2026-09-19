@@ -33,10 +33,32 @@ $assets = Join-Path $root 'assets'
 $dist = Join-Path $root 'dist'
 $publishDir = Join-Path $dist 'selfcontained'
 $payloadZip = Join-Path $dist 'payload.zip'
-$bootExe = Join-Path $dist 'Boot.exe'
+$bootExe = Join-Path $dist 'DSH-Installer-Setup.exe'
 $uninstallExe = Join-Path $dist 'DSH-Uninstall.exe'
 $setupExe = Join-Path $dist 'DSH-Installer-Setup.exe'
 $icon = Join-Path $assets 'DSHInstaller.ico'
+$versionInfoDir = Join-Path $dist '_versioninfo'
+
+# 版本号与产品信息只有一个来源:Directory.Build.props
+$propsPath = Join-Path $root 'Directory.Build.props'
+$propsRaw = Get-Content $propsPath -Raw
+function Get-Prop {
+    param([string]$Name, [string]$Fallback = '')
+    $m = [regex]::Match($propsRaw, "<$Name>([^<]+)</$Name>")
+    if ($m.Success) { return $m.Groups[1].Value.Trim() }
+    return $Fallback
+}
+
+$version = Get-Prop 'InstallerVersion'
+if (-not $version) { throw 'Directory.Build.props 里没读到 InstallerVersion' }
+
+$productName = Get-Prop 'Product' 'DeepSeek Harness'
+$companyName = Get-Prop 'Company' 'Deepseek / KitamaruRamito'
+$copyright = Get-Prop 'Copyright'
+$bootTitle = Get-Prop 'BootTitle' 'DeepSeek Harness 安装程序'
+$bootDescription = Get-Prop 'BootDescription' 'DeepSeek Harness 的一体化 Windows 安装程序'
+$uninstallTitle = Get-Prop 'UninstallTitle' 'DeepSeek Harness 卸载程序'
+$uninstallDescription = Get-Prop 'UninstallDescription' '卸载 DeepSeek Harness 以及它装上的组件'
 
 # 优先用本机那套便携 SDK;CI 上没有这个目录,就退回 PATH 里的 dotnet
 $dotnet = 'G:\DeepSeek DSH\.tools\dotnet\dotnet.exe'
@@ -100,20 +122,62 @@ $sizeMb = [math]::Round(((Get-ChildItem $publishDir -Recurse -File | Measure-Obj
 Write-Host "  发布输出 $sizeMb MB(框架依赖,所以只有这么大)"
 
 Write-Host '[4/7] 编译引导程序与独立卸载程序(.NET Framework,无前置依赖)' -ForegroundColor Cyan
-$compilerArgs = @('/nologo', '/platform:anycpu', '/optimize+', '/utf8output')
 
+$compilerArgs = @('/nologo', '/platform:anycpu', '/optimize+', '/utf8output')
 if (Test-Path $icon) { $compilerArgs += "/win32icon:$icon" }
 
+# --- 版本资源 ---------------------------------------------------------------
+#
+# csc 编出来的 exe **默认没有版本资源** —— 属性里"文件版本/产品名称/版权"全是空的,
+# "原始文件名"还会写着编译时的源文件名(用户看到过 Boot.exe 那一版)。
+# 版本资源是从**程序集特性**生成的,所以这里按 Directory.Build.props 的版本号
+# 现生成一份特性文件,和源码一起编。
+#
+# 文件必须带 BOM:csc 不看 BOM 就按系统 ANSI 读,中文会变成乱码。
+New-Item -ItemType Directory -Path $versionInfoDir -Force | Out-Null
+
+$fileVersion = ($version -split '\.')
+while ($fileVersion.Count -lt 4) { $fileVersion += '0' }
+$fileVersion = ($fileVersion[0..3] -join '.')
+
+function New-VersionInfo {
+    param([string]$Path, [string]$Title, [string]$Description)
+
+    $body = @"
+using System.Reflection;
+
+[assembly: AssemblyTitle("$Title")]
+[assembly: AssemblyDescription("$Description")]
+[assembly: AssemblyProduct("$productName")]
+[assembly: AssemblyCompany("$companyName")]
+[assembly: AssemblyCopyright("$copyright")]
+[assembly: AssemblyFileVersion("$fileVersion")]
+[assembly: AssemblyVersion("$fileVersion")]
+[assembly: AssemblyInformationalVersion("$version")]
+"@
+
+    [System.IO.File]::WriteAllText($Path, $body, (New-Object System.Text.UTF8Encoding($true)))
+}
+
+$bootVersionFile = Join-Path $versionInfoDir 'BootVersionInfo.cs'
+$uninstallVersionFile = Join-Path $versionInfoDir 'UninstallVersionInfo.cs'
+
+New-VersionInfo -Path $bootVersionFile -Title $bootTitle -Description $bootDescription
+New-VersionInfo -Path $uninstallVersionFile -Title $uninstallTitle -Description $uninstallDescription
+
+# 引导程序**直接编译成最终文件名** —— PE 里的"原始文件名"取的是编译时的 /out 名字,
+# 先编成 Boot.exe 再改名的话,属性里会一直写着 Boot.exe。
+# 后面的步骤会读它的全部字节、再把 payload 追加到同一个文件里(先读后写,没问题)。
 & $csc @compilerArgs /target:winexe /out:$bootExe `
     /r:System.IO.Compression.dll /r:System.IO.Compression.FileSystem.dll `
     /r:System.Windows.Forms.dll /r:System.Drawing.dll `
-    (Join-Path $bootDir 'Boot.cs') 2>&1 | ForEach-Object { Write-Host "  $_" }
-if (-not (Test-Path $bootExe)) { throw 'Boot.exe 编译失败' }
-if ((Get-Item $bootExe).Length -lt 10240) { throw 'Boot.exe 小得不像话,编译多半没成功' }
+    (Join-Path $bootDir 'Boot.cs') $bootVersionFile 2>&1 | ForEach-Object { Write-Host "  $_" }
+if (-not (Test-Path $bootExe)) { throw '引导程序编译失败' }
+if ((Get-Item $bootExe).Length -lt 10240) { throw '引导程序小得不像话,编译多半没成功' }
 
 & $csc @compilerArgs /target:winexe /out:$uninstallExe `
     /r:System.Windows.Forms.dll /r:System.Drawing.dll `
-    (Join-Path $bootDir 'Uninstall.cs') 2>&1 | ForEach-Object { Write-Host "  $_" }
+    (Join-Path $bootDir 'Uninstall.cs') $uninstallVersionFile 2>&1 | ForEach-Object { Write-Host "  $_" }
 if (-not (Test-Path $uninstallExe)) { throw 'DSH-Uninstall.exe 编译失败' }
 
 # 卸载程序要**跟着安装器一起**落地:安装时会被铺到目标机器,

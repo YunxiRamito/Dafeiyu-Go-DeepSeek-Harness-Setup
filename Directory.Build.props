@@ -9,7 +9,33 @@
     <NodeMinimumVersion>22.13.0</NodeMinimumVersion>
     <WindowsMinimumBuild>17763</WindowsMinimumBuild>
     <WindowsAppRuntimeVersion>1.8.260804001</WindowsAppRuntimeVersion>
-    <Company>高性能萝卜子鲸鲸有限公司</Company>
+
+    <!--
+      产品信息 —— **属性页里显示的那些字全部来自这里**。
+
+      主程序(.NET 项目)读的是下面这几个 MSBuild 属性;
+      引导程序和卸载程序是 csc 直编的,读不了 MSBuild,
+      由 pack-release.ps1 把同一批值生成为程序集特性再编进去。
+      两边都指向这一份,免得又出现"安装器写着 A、卸载器写着 B"。
+
+      Version 别用 1.0.0+<commit> 那种形式:属性页里那串 hash 很难看,
+      要看 commit 去 Release 页面看。
+    -->
+    <Product>DeepSeek Harness</Product>
+    <AssemblyTitle>DeepSeek Harness 安装程序</AssemblyTitle>
+    <Description>DeepSeek Harness 的一体化 Windows 安装程序</Description>
+    <Company>Deepseek / KitamaruRamito</Company>
+    <Copyright>Copyright © 2026 Deepseek / KitamaruRamito · MIT License</Copyright>
+    <Version>$(InstallerVersion)</Version>
+    <FileVersion>$(InstallerVersionFull)</FileVersion>
+    <InformationalVersion>$(InstallerVersion)</InformationalVersion>
+
+    <!-- 引导程序那份的标题(和主程序不同:一个是安装程序,一个是引导程序) -->
+    <BootTitle>DeepSeek Harness 安装程序</BootTitle>
+    <BootDescription>DeepSeek Harness 的一体化 Windows 安装程序</BootDescription>
+    <UninstallTitle>DeepSeek Harness 卸载程序</UninstallTitle>
+    <UninstallDescription>卸载 DeepSeek Harness 以及它装上的组件</UninstallDescription>
+
     <Authors>Deepseek/KitamaruRamito</Authors>
   </PropertyGroup>
 </Project>

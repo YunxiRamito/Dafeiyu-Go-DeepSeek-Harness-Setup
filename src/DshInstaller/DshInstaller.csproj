@@ -26,13 +26,24 @@
     <Nullable>disable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
+
+    <!-- 产品信息全部来自 Directory.Build.props,这里**不要**再写一遍 ——
+         以前这里自己写着 Product/Description,和引导程序那边对不上,
+         属性页里就出现"同一个产品两个名字"。 -->
     <Version>$(InstallerVersion)</Version>
     <AssemblyVersion>$(InstallerVersionFull)</AssemblyVersion>
     <FileVersion>$(InstallerVersionFull)</FileVersion>
+    <InformationalVersion>$(InstallerVersion)</InformationalVersion>
+
+    <!-- 别往 InformationalVersion 后面缀 commit hash:属性页里那串很难看 -->
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+
     <Authors>$(Authors)</Authors>
     <Company>$(Company)</Company>
-    <Product>DeepSeek Harness Installer</Product>
-    <Description>DeepSeek Harness 一键安装程序</Description>
+    <Copyright>$(Copyright)</Copyright>
+    <Product>$(Product)</Product>
+    <Description>$(Description)</Description>
+    <AssemblyTitle>$(AssemblyTitle)</AssemblyTitle>
   </PropertyGroup>
 
   <ItemGroup>

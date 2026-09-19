@@ -74,7 +74,18 @@ jobs:
           Write-Host "SHA256: $hash"
           "sha256=$hash" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
+      - name: 存成构建产物(手动试跑时也能下载)
+        uses: actions/upload-artifact@v4
+        with:
+          name: DSH-Installer-Setup
+          path: dist/DSH-Installer-Setup.exe
+          if-no-files-found: error
+
+      # 只有打 tag 才发 Release。
+      # 手动 workflow_dispatch 时没有 tag,不拦的话 action-gh-release 会拿
+      # 分支名(main)当 tag 建出个莫名其妙的 Release。
       - name: 发 Release
+        if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
           files: dist/DSH-Installer-Setup.exe
