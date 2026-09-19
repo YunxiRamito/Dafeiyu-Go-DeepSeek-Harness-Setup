@@ -144,6 +144,15 @@ namespace DshInstaller.Shared.Install
             // —— 见下面"连续 5 秒低于 60 KB/s"那条,那才是真正管用的判据。
             List<string> ordered = new List<string>(urls);
 
+            // 后台测速的共享状态:慢下来的时候去量别的源,量出真更快的才换。
+            // 为什么要有"真更快"这一层:公共代理是**轮流抽风**的,不加判断就换
+            // 等于从一个坑跳进另一个坑 —— 白白丢掉已经下到的进度和那条热连接。
+            object probeLock = new object();
+            bool probeStarted = false;
+            bool probeFinished = false;
+            string preferredUrl = null;
+            double preferredSpeed = 0;
+
             // 大文件先试 8 连接分段 —— 那几家加速前缀普遍按**连接**限速,
             // 单连接 173 KB/s 换成 8 条常见能到三倍以上。
             //
@@ -171,8 +180,18 @@ namespace DshInstaller.Shared.Install
                     throw new OperationCanceledException();
                 }
 
-                // 每次换一个源:源不够就取模轮着来
-                string url = ordered[(attempt - 1) % ordered.Count];
+                // 每次换一个源:后台测出更快的就用那个,否则按顺序轮着来
+                string url;
+                lock (probeLock)
+                {
+                    url = preferredUrl;
+                    preferredUrl = null;
+                }
+
+                if (string.IsNullOrEmpty(url))
+                {
+                    url = ordered[(attempt - 1) % ordered.Count];
+                }
 
                 if (attempt > 1)
                 {
@@ -191,7 +210,56 @@ namespace DshInstaller.Shared.Install
 
                 try
                 {
-                    DownloadOne(url, partialPath, progress, cancellation);
+                    DownloadOne(
+                        url,
+                        partialPath,
+                        progress,
+                        cancellation,
+                        delegate(string current, double currentSpeed)
+                        {
+                            // 慢了 —— 后台去量别的源(只量一次,不是每轮都量)
+                            lock (probeLock)
+                            {
+                                if (probeStarted)
+                                {
+                                    return;
+                                }
+
+                                probeStarted = true;
+                            }
+
+                            Task.Run(delegate
+                            {
+                                string faster = null;
+                                double fasterSpeed = 0;
+
+                                try
+                                {
+                                    faster = ProbeForFaster(
+                                        ordered, current, currentSpeed, cancellation, onNotice, out fasterSpeed);
+                                }
+                                catch
+                                {
+                                }
+
+                                lock (probeLock)
+                                {
+                                    preferredUrl = faster;
+                                    preferredSpeed = fasterSpeed;
+                                    probeFinished = true;
+                                }
+                            });
+                        },
+                        delegate(string current)
+                        {
+                            // 量出结果了、而且确实比现在这条快 → 中断当前下载去用它
+                            lock (probeLock)
+                            {
+                                return probeFinished
+                                    && !string.IsNullOrEmpty(preferredUrl)
+                                    && !string.Equals(preferredUrl, current, StringComparison.OrdinalIgnoreCase);
+                            }
+                        });
 
                     if (File.Exists(targetPath))
                     {
@@ -201,6 +269,22 @@ namespace DshInstaller.Shared.Install
                     File.Move(partialPath, targetPath);
                     InstallLogger.Write("下载完成(第 " + attempt + " 次尝试):" + url + " -> " + targetPath);
                     return url;
+                }
+                catch (SwitchSourceException)
+                {
+                    // 后台量出更快的源了。算一次尝试,不算失败 —— 进度还在 .part 里。
+                    InstallLogger.Write("后台测速发现更快的源,中途换源(当前 " + url + ")");
+                    Notice(onNotice, SharedText.T("发现更快的下载源,正在切换…", "A faster source was found; switching…"));
+
+                    try
+                    {
+                        Thread.Sleep(RetryDelayMs);
+                    }
+                    catch
+                    {
+                    }
+
+                    continue;
                 }
                 catch (OperationCanceledException)
                 {
@@ -253,6 +337,128 @@ namespace DshInstaller.Shared.Install
         }
 
         /// <summary>
+        /// 后台量一圈别的候选,找出**确实比当前这条快**的。
+        ///
+        /// 返回 null 表示"别换了" —— 其余源一样慢或者更慢。
+        /// 判断用乘法而不是"大于就行":快 5% 不值得丢掉已经下到的进度和热连接,
+        /// 得明显更快(默认 1.2 倍)才换。
+        /// </summary>
+        private static string ProbeForFaster(
+            IList<string> ordered,
+            string current,
+            double currentSpeed,
+            Func<bool> cancellation,
+            Action<string> onNotice,
+            out double bestSpeed)
+        {
+            bestSpeed = 0;
+            string best = null;
+            double need = currentSpeed * SwitchMargin;
+            int probed = 0;
+
+            for (int i = 0; i < ordered.Count && probed < MaxProbeNodes; i++)
+            {
+                if (string.Equals(ordered[i], current, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                if (cancellation != null && cancellation())
+                {
+                    return null;
+                }
+
+                double speed = MeasureSource(ordered[i], ProbeWindowMs);
+                probed++;
+
+                if (speed > need && speed > bestSpeed)
+                {
+                    bestSpeed = speed;
+                    best = ordered[i];
+                }
+            }
+
+            if (best == null)
+            {
+                InstallLogger.Write("后台测速:没有比当前更快的源(当前 "
+                    + (int)(currentSpeed / 1024) + " KB/s)");
+            }
+            else
+            {
+                InstallLogger.Write("后台测速:发现更快的源 " + best
+                    + "(" + (int)(bestSpeed / 1024) + " KB/s > 当前 " + (int)(currentSpeed / 1024) + " KB/s)");
+            }
+
+            return best;
+        }
+
+        /// <summary>量一个源:最多读 milliseconds 毫秒,返回字节/秒(0 = 失败)。</summary>
+        private static double MeasureSource(string url, int milliseconds)
+        {
+            try
+            {
+                using (CancellationTokenSource timeout = new CancellationTokenSource(milliseconds + 1500))
+                using (HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Get, url))
+                {
+                    // 只要一小段,别把整个文件又拉一遍
+                    request.Headers.Range = new System.Net.Http.Headers.RangeHeaderValue(0, 512 * 1024 - 1);
+
+                    using (HttpResponseMessage response = Client.Send(
+                        request, HttpCompletionOption.ResponseHeadersRead, timeout.Token))
+                    {
+                        if (!response.IsSuccessStatusCode
+                            && response.StatusCode != HttpStatusCode.PartialContent)
+                        {
+                            return 0;
+                        }
+
+                        using (Stream stream = response.Content.ReadAsStream())
+                        {
+                            Stopwatch clock = Stopwatch.StartNew();
+                            byte[] buffer = new byte[64 * 1024];
+                            long total = 0;
+
+                            while (clock.Elapsed.TotalMilliseconds < milliseconds)
+                            {
+                                int read;
+                                try
+                                {
+                                    read = stream.Read(buffer, 0, buffer.Length);
+                                }
+                                catch
+                                {
+                                    break;
+                                }
+
+                                if (read <= 0)
+                                {
+                                    break;
+                                }
+
+                                total += read;
+                            }
+
+                            double seconds = clock.Elapsed.TotalSeconds;
+                            return seconds <= 0 ? 0 : total / seconds;
+                        }
+                    }
+                }
+            }
+            catch
+            {
+                return 0;
+            }
+        }
+
+        /// <summary>后台测速选出了更快的源,中断当前这条下载。</summary>
+        private sealed class SwitchSourceException : Exception
+        {
+            public SwitchSourceException() : base("switch to a faster source")
+            {
+            }
+        }
+
+        /// <summary>
         /// 低于这个速度、并持续 <see cref="SlowSeconds"/> 秒,就认定"这个源不行了",换下一个。
         ///
         /// 为什么用**下载中的实测速度**而不是开下前测速:测速测的是"这几秒里它多快",
@@ -264,11 +470,22 @@ namespace DshInstaller.Shared.Install
         /// <summary>慢多久算该换源了。</summary>
         private const double SlowSeconds = 5;
 
+        /// <summary>后台测速每条候选量多久。</summary>
+        private const int ProbeWindowMs = 2500;
+
+        /// <summary>后台测速最多量几个(别把用户时间耗在量边上)。</summary>
+        private const int MaxProbeNodes = 3;
+
+        /// <summary>新源得比当前快这么多倍才值得换(丢进度 + 重连是有代价的)。</summary>
+        private const double SwitchMargin = 1.2;
+
         private static void DownloadOne(
             string url,
             string partialPath,
             Action<DownloadProgress> progress,
-            Func<bool> cancellation)
+            Func<bool> cancellation,
+            Action<string, double> onTooSlow,
+            Func<string, bool> switchReady)
         {
             long existing = 0;
             if (File.Exists(partialPath))
@@ -377,8 +594,8 @@ namespace DshInstaller.Shared.Install
                                 windowBytes = 0;
                                 lastReportSeconds = elapsed;
 
-                                // 太慢就换源:连续 5 秒都不到 60 KB/s,再耗着就是白等。
-                                // 抛出异常会被上面的尝试循环接住 —— 换下一个源、带着 Range 续传接着下。
+                                // 太慢就**叫后台去量别的源**,但不立刻换 ——
+                                // 换不换得看量出来的是不是真比这条快(见 switchReady)。
                                 if (state.BytesPerSecond < SlowBytesPerSecond)
                                 {
                                     if (slowSinceSeconds < 0)
@@ -387,15 +604,22 @@ namespace DshInstaller.Shared.Install
                                     }
                                     else if (elapsed - slowSinceSeconds >= SlowSeconds)
                                     {
-                                        throw new TimeoutException(SharedText.T(
-                                            "这个源太慢(" + (int)(state.BytesPerSecond / 1024) + " KB/s),换一个",
-                                            "Source too slow (" + (int)(state.BytesPerSecond / 1024) + " KB/s); switching"));
+                                        if (onTooSlow != null)
+                                        {
+                                            onTooSlow(url, state.BytesPerSecond);
+                                        }
                                     }
                                 }
                                 else
                                 {
                                     // 缓过来了就当没慢过 —— 网络抖动一下不该被换掉
                                     slowSinceSeconds = -1;
+                                }
+
+                                // 后台量出更快的源了 → 中断这条,交给换源逻辑
+                                if (switchReady != null && switchReady(url))
+                                {
+                                    throw new SwitchSourceException();
                                 }
 
                                 if (progress != null)
