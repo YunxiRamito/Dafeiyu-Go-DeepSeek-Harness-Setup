@@ -640,14 +640,29 @@ namespace DshInstaller.Shared.Install
 
             context.Log("启动器版本 " + release.Version + ",候选源 " + release.Urls.Count + " 个");
 
-            string archive = Path.Combine(o.TempRoot, "launcher-" + release.Version + ".zip");
+            // 加速线路下把 npmmirror 那条**排最前** —— 它是所有候选里最快的
+            // (实测 9.8 MB/s,而 GitHub 系只有几十到一百多 KB/s)。
+            // 地址由版本号拼出来,所以以后启动器发新版,这里不用动。
+            List<string> urls = new List<string>(release.Urls);
+            if (MirrorSource.IsChina(o.SourcePreference) && !string.IsNullOrEmpty(release.Version))
+            {
+                string npm = LauncherFeed.NpmMirrorUrl(release.Version);
+                if (!urls.Contains(npm))
+                {
+                    urls.Insert(0, npm);
+                }
+            }
+
+            // 扩展名故意写成 .bin:候选里既有 npm 的 .tgz 也有 GitHub 的 .zip,
+            // 到底拿到哪种得看内容(下面 MaterializeLauncherArchive),不能靠后缀猜。
+            string downloaded = Path.Combine(o.TempRoot, "launcher-" + release.Version + ".bin");
             context.Report(SharedText.T("准备中 · 下载启动器 " + release.Version, "Preparing · downloading the launcher " + release.Version), 10);
 
             await Task.Run(delegate
             {
                 DownloadEngine.Download(
-                    release.Urls,
-                    archive,
+                    urls,
+                    downloaded,
                     delegate(DownloadProgress progress)
                     {
                         context.Report(
@@ -668,6 +683,10 @@ namespace DshInstaller.Shared.Install
             }, token).ConfigureAwait(false);
 
             token.ThrowIfCancellationRequested();
+
+            // 拿到的是 npm 的 tgz 还是 GitHub 的 zip?按内容判断,不靠 URL 猜 ——
+            // 引擎在候选之间轮换,轮到哪里都可能。
+            string archive = MaterializeLauncherArchive(context, downloaded, release.Version);
 
             if (!string.IsNullOrEmpty(release.Sha256))
             {
@@ -876,6 +895,60 @@ namespace DshInstaller.Shared.Install
 
             context.Log("pnpm 已就位:" + pnpmExe);
             context.Report(SharedText.T("完成", "Done"), 100);
+        }
+
+        /// <summary>
+        /// 把下下来的东西变成一份**启动器 zip**。
+        ///
+        /// 两种可能:npmmirror 的 tgz(gzip 头 1F 8B,里面就是我们那个 zip),
+        /// 或者引擎轮换后直接从 GitHub 拿到 zip。按内容判断。
+        ///
+        /// 顺带说明:清单里的 sha256 是**对 zip** 算的,所以从 tgz 解出来之后
+        /// 再交给上面的校验,口径一致 —— 不用为 npm 那条路单独维护一份哈希。
+        /// </summary>
+        private static string MaterializeLauncherArchive(InstallContext context, string downloaded, string version)
+        {
+            bool isGzip = false;
+            try
+            {
+                using (FileStream probe = File.OpenRead(downloaded))
+                {
+                    isGzip = probe.ReadByte() == 0x1F && probe.ReadByte() == 0x8B;
+                }
+            }
+            catch
+            {
+            }
+
+            if (!isGzip)
+            {
+                return downloaded;
+            }
+
+            string zip = Path.Combine(Path.GetDirectoryName(downloaded), "launcher-" + version + ".zip");
+            context.Log("下到的是 npm 的 tgz,解出里面的 zip");
+
+            using (FileStream file = File.OpenRead(downloaded))
+            using (System.IO.Compression.GZipStream gzip = new System.IO.Compression.GZipStream(
+                file, System.IO.Compression.CompressionMode.Decompress))
+            using (System.Formats.Tar.TarReader reader = new System.Formats.Tar.TarReader(gzip))
+            {
+                System.Formats.Tar.TarEntry entry;
+                while ((entry = reader.GetNextEntry()) != null)
+                {
+                    if (!entry.Name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    entry.ExtractToFile(zip, true);
+                    TryDelete(downloaded);
+                    return zip;
+                }
+            }
+
+            throw new InvalidOperationException(
+                SharedText.T("npm 包里没有找到启动器 zip", "The npm package did not contain a launcher zip"));
         }
 
         /// <summary>

@@ -59,6 +59,35 @@ namespace DshInstaller.Shared.Install
             return urls;
         }
 
+        /// <summary>
+        /// 启动器发行包在 npm 上的名字。
+        ///
+        /// 为什么不直接把 zip 挂在 GitHub:国内直连只有几十到一百多 KB/s,
+        /// 而且要 10 MB。npm 有 npmmirror 全量镜像,实测 9.8 MB/s —— 快两个数量级。
+        /// (jsDelivr 试过,不行:它只对热门仓库的已缓存文件快,我们这种冷门仓库
+        /// 走它还是回源 GitHub 的速度,八连接甚至 0 字节。)
+        /// </summary>
+        public const string NpmPackage = "@yunxiramito/dsh-launcher";
+
+        /// <summary>
+        /// 由**版本号拼出** npmmirror 的 tarball 地址。
+        ///
+        /// 关键点:地址是确定的,不用在清单里维护。所以以后发启动器只要推一个新版本号,
+        /// 安装器一行都不用改,也不用等谁去同步 mirrors 数组。
+        /// </summary>
+        public static string NpmMirrorUrl(string version)
+        {
+            return "https://registry.npmmirror.com/" + NpmPackage + "/-/" + NpmTarballName(version);
+        }
+
+        /// <summary>npm tarball 的文件名(作用域包的文件名不带作用域)。</summary>
+        private static string NpmTarballName(string version)
+        {
+            int slash = NpmPackage.LastIndexOf('/');
+            string bare = slash >= 0 ? NpmPackage.Substring(slash + 1) : NpmPackage;
+            return bare + "-" + version + ".tgz";
+        }
+
         /// <summary>把 GitHub release 资产地址包一层国内加速前缀。</summary>
         public static List<string> MirrorizeAsset(string assetUrl, string preference)
         {
