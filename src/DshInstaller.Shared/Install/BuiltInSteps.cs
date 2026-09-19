@@ -651,6 +651,12 @@ namespace DshInstaller.Shared.Install
                 {
                     urls.Insert(0, npm);
                 }
+
+                // 万一正好赶上"刚发版、npmmirror 还没同步"这个空窗期:
+                // 先问一句,没同步就催它一下、等一会儿(有上限)。
+                // 主要防线其实是发版流程(同步好之前不更新清单),这里只是兜底 ——
+                // 毕竟用户不该为"发布节奏"买单。
+                await EnsureNpmMirrorReady(context, release.Version, token).ConfigureAwait(false);
             }
 
             // 扩展名故意写成 .bin:候选里既有 npm 的 .tgz 也有 GitHub 的 .zip,
@@ -895,6 +901,100 @@ namespace DshInstaller.Shared.Install
 
             context.Log("pnpm 已就位:" + pnpmExe);
             context.Report(SharedText.T("完成", "Done"), 100);
+        }
+
+        /// <summary>
+        /// 等 npmmirror 把这一版同步好。
+        ///
+        /// 为什么要等:npm 上是发出去了,但 npmmirror 要过一会儿才镜像到。
+        /// 而安装器**只认 npmmirror 这条路**(其他候选都是 GitHub 系,几十 KB/s),
+        /// 正好卡在空窗里的用户就会被慢一路。
+        ///
+        /// 等不到也不报错 —— 照常走后面的候选,慢总比装不上好。
+        /// </summary>
+        private static async Task EnsureNpmMirrorReady(
+            InstallContext context, string version, CancellationToken token)
+        {
+            string url = LauncherFeed.NpmMirrorUrl(version);
+
+            for (int attempt = 1; attempt <= 4; attempt++)
+            {
+                if (token.IsCancellationRequested)
+                {
+                    return;
+                }
+
+                bool ready = await Task.Run(delegate { return UrlIsReady(url); }, token)
+                    .ConfigureAwait(false);
+
+                if (ready)
+                {
+                    return;
+                }
+
+                // 催 npmmirror 按需同步(它确实有这个接口)
+                RequestNpmSync();
+
+                context.Log("npmmirror 还没这一版(第 " + attempt + "/4 次),催同步后等 5 秒");
+                context.Report(SharedText.T(
+                    "准备中 · 正在等待镜像同步", "Preparing · waiting for the mirror to catch up"), 8);
+
+                try
+                {
+                    await Task.Delay(5000, token).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    return;
+                }
+            }
+
+            context.Log("npmmirror 迟迟没同步,改用后面的下载源(GitHub 系,会慢一些)");
+        }
+
+        /// <summary>探一下这个地址现在能不能下(HEAD 就够)。</summary>
+        private static bool UrlIsReady(string url)
+        {
+            try
+            {
+                using (System.Net.Http.HttpClient client = new System.Net.Http.HttpClient())
+                {
+                    client.Timeout = TimeSpan.FromSeconds(8);
+
+                    using (System.Net.Http.HttpRequestMessage request =
+                        new System.Net.Http.HttpRequestMessage(System.Net.Http.HttpMethod.Head, url))
+                    using (System.Net.Http.HttpResponseMessage response = client.Send(request))
+                    {
+                        return response.IsSuccessStatusCode;
+                    }
+                }
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        /// <summary>催 npmmirror 同步这个包(失败就算了,不影响主流程)。</summary>
+        private static void RequestNpmSync()
+        {
+            try
+            {
+                using (System.Net.Http.HttpClient client = new System.Net.Http.HttpClient())
+                {
+                    client.Timeout = TimeSpan.FromSeconds(8);
+
+                    string api = "https://registry.npmmirror.com/-/package/"
+                        + LauncherFeed.NpmPackage + "/syncs";
+
+                    using (client.PutAsync(api, null).GetAwaiter().GetResult())
+                    {
+                    }
+                }
+            }
+            catch
+            {
+            }
         }
 
         /// <summary>
