@@ -29,6 +29,15 @@ namespace DshInstaller.Shared.Install
         /// <summary>测得比这还快就直接用它,不再浪费时间测其余源。</summary>
         private const double FastEnoughBytesPerSecond = 1024.0 * 1024;
 
+        /// <summary>
+        /// 最多测几个节点。
+        ///
+        /// 分流之后候选本来就短(加速线路是国内镜像打头 + 官方兜底),
+        /// 测三个已经足够挑出"哪个能跑、哪个快";再多测纯属让用户干等。
+        /// 官方线路只有一条候选,压根不会被测 —— 走的是上面的单条直接返回。
+        /// </summary>
+        private const int MaxProbeNodes = 3;
+
         private static readonly HttpClient Client = CreateClient();
 
         /// <summary>
@@ -74,7 +83,13 @@ namespace DshInstaller.Shared.Install
                 return ordered;
             }
 
-            int count = urls.Count;
+            // **只测前三个节点就够了**。
+            //
+            // 分流之后候选本身就变短了:加速线路是「国内镜像 → 官方兜底」,
+            // 官方线路干脆只有一条(那种情况上面已经直接返回,压根不测)。
+            // 再往后的候选是"轮换时才轮到"的备胎,不必在测速阶段一个个等 4 秒。
+            int probeCount = urls.Count > MaxProbeNodes ? MaxProbeNodes : urls.Count;
+            int count = probeCount;
             string[] candidates = new string[count];
             double[] speeds = new double[count];
 
@@ -125,6 +140,8 @@ namespace DshInstaller.Shared.Install
                     }
                 }
 
+                AppendTail(ordered, urls, probeCount);
+
                 Notice(notice, SharedText.T("测速完成。", "Speed test complete."));
 
                 return ordered;
@@ -160,11 +177,28 @@ namespace DshInstaller.Shared.Install
                 ordered.Add(candidates[i]);
             }
 
+            AppendTail(ordered, urls, probeCount);
+
             // 全测完了也只报一句"测速完成" —— 挑中哪个源、快多少,
             // 那是日志里该有的东西,不该糊在用户脸上(用户点名要去掉)。
             Notice(notice, SharedText.T("测速完成。", "Speed test complete."));
 
             return ordered;
+        }
+
+        /// <summary>
+        /// 把没测的那些(第 MaxProbeNodes 条往后)按原顺序接到末尾当备胎。
+        /// 顺序是人工按可达性排过的,别打乱。
+        /// </summary>
+        private static void AppendTail(List<string> ordered, IList<string> urls, int probed)
+        {
+            for (int i = probed; i < urls.Count; i++)
+            {
+                if (!ordered.Contains(urls[i]))
+                {
+                    ordered.Add(urls[i]);
+                }
+            }
         }
 
         /// <summary>实测一个源:最多读 milliseconds 毫秒,返回字节/秒(0 = 失败或读不到东西)。</summary>
