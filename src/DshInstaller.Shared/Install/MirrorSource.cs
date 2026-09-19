@@ -128,6 +128,18 @@ namespace DshInstaller.Shared.Install
 
         // ------------------------------------------------------------ Git / Python / pnpm
 
+        /// <summary>
+        /// 是不是"加速线路"。
+        ///
+        /// 用户定的规矩:选加速线路就**优先国内镜像**(jsDelivr 的国内镜像 / 华为云),
+        /// GitHub 只当兜底;选官方线路就**全部走官方源**,一个镜像都不塞 ——
+        /// 那种情况通常是人在墙外,直连比什么都快。
+        /// </summary>
+        public static bool IsChina(string preference)
+        {
+            return string.Equals(preference, China, StringComparison.OrdinalIgnoreCase);
+        }
+
         /// <summary>MinGit 便携版(GitHub 会重定向到 objects 存储)。</summary>
         public static string MinGitOfficial(string version)
         {
@@ -142,6 +154,75 @@ namespace DshInstaller.Shared.Install
         public static string PnpmOfficial(string version)
         {
             return "https://github.com/pnpm/pnpm/releases/download/v" + version + "/pnpm-win-x64.exe";
+        }
+
+        /// <summary>
+        /// MinGit 的候选地址,按线路给。
+        ///
+        /// 虚拟机实测(2026-09-19):同一个 46 MB 包 ——
+        ///   华为云 10,527 KB/s | npmmirror 8,426 KB/s | github.com **17 KB/s**
+        /// 差了六百倍,所以国内线路必须先试镜像。
+        /// </summary>
+        public static List<string> MinGitUrls(string preference, string version)
+        {
+            string file = "MinGit-" + version + "-64-bit.zip";
+            string folder = "v" + version + ".windows.1";
+            List<string> result = new List<string>();
+
+            if (IsChina(preference))
+            {
+                result.Add("https://mirrors.huaweicloud.com/git-for-windows/" + folder + "/" + file);
+                result.Add("https://registry.npmmirror.com/-/binary/git-for-windows/" + folder + "/" + file);
+            }
+
+            // 官方兜底。加速线路上再过一遍 ghproxy 那层前缀 —— 国内直连 github 常常被拒。
+            result.AddRange(LauncherFeed.MirrorizeAsset(MinGitOfficial(version), preference));
+            return result;
+        }
+
+        /// <summary>Python embed 的候选地址(实测 华为云 14,961 KB/s / npmmirror 7,600 KB/s / python.org 45 KB/s)。</summary>
+        public static List<string> PythonUrls(string preference, string version)
+        {
+            string file = "python-" + version + "-embed-amd64.zip";
+            List<string> result = new List<string>();
+
+            if (IsChina(preference))
+            {
+                result.Add("https://mirrors.huaweicloud.com/python/" + version + "/" + file);
+                result.Add("https://registry.npmmirror.com/-/binary/python/" + version + "/" + file);
+            }
+
+            result.Add(PythonOfficial(version));
+            return result;
+        }
+
+        /// <summary>
+        /// pnpm 的候选地址。
+        ///
+        /// pnpm 是唯一**没有现成镜像**的:华为云的 /pnpm/ 是个前端页面(不是目录),
+        /// npmmirror 的二进制目录里也没有 pnpm。但它的平台二进制本身发布在 npm 上 ——
+        /// `@pnpm/win-x64` 这个包的 tgz 里就是 `package/pnpm.exe`,npmmirror 有镜像,
+        /// 实测 9.8 MB/s。所以国内线路下我们下一个 tgz 再解出 exe(见 RunPnpmAsync)。
+        ///
+        /// 返回值第一项如果是 .tgz,调用方要按 tgz 处理。
+        /// </summary>
+        public static List<string> PnpmUrls(string preference, string version)
+        {
+            List<string> result = new List<string>();
+
+            if (IsChina(preference))
+            {
+                result.Add(PnpmTarballUrl(version));
+            }
+
+            result.AddRange(LauncherFeed.MirrorizeAsset(PnpmOfficial(version), preference));
+            return result;
+        }
+
+        /// <summary>npmmirror 上 @pnpm/win-x64 的 tarball(tgz 里含 package/pnpm.exe)。</summary>
+        public static string PnpmTarballUrl(string version)
+        {
+            return "https://registry.npmmirror.com/@pnpm/win-x64/-/win-x64-" + version + ".tgz";
         }
 
         // ------------------------------------------------------------ npm 源

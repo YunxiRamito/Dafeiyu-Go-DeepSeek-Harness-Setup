@@ -766,10 +766,9 @@ namespace DshInstaller.Shared.Install
             }
 
             string fileName = "MinGit-" + DefaultGitVersion + "-64-bit.zip";
-            // 走统一的镜像前缀(国内 ghproxy 优先),不要只给官方地址 ——
-            // 虚拟机实测 github.com 有时会"目标计算机积极拒绝",没有镜像就直接失败。
-            List<string> urls = LauncherFeed.MirrorizeAsset(
-                MirrorSource.MinGitOfficial(DefaultGitVersion), o.SourcePreference);
+            // 按线路给候选:加速线路先试华为云 / npmmirror(实测 10 MB/s),
+            // 官方线路就走 github(国内直连常常"积极拒绝",所以加速线路上还留了 ghproxy 兜底)。
+            List<string> urls = MirrorSource.MinGitUrls(o.SourcePreference, DefaultGitVersion);
 
             string archive = Path.Combine(o.TempRoot, fileName);
             context.Report(SharedText.T("准备中 · 下载 MinGit", "Preparing · downloading MinGit"), 5);
@@ -837,15 +836,25 @@ namespace DshInstaller.Shared.Install
             }
 
             Directory.CreateDirectory(pnpmDir);
-            List<string> urls = LauncherFeed.MirrorizeAsset(
-                MirrorSource.PnpmOfficial(DefaultPnpmVersion), o.SourcePreference);
+
+            // pnpm 是唯一没现成镜像的组件:华为云 / npmmirror 的二进制目录里都没有它。
+            // 但它的平台二进制发布在 npm 上(@pnpm/win-x64),npmmirror 有镜像且实测 9.8 MB/s,
+            // 而 GitHub 那条只有 48 KB/s。所以加速线路下第一条候选是个 **tgz**。
+            //
+            // 那个 tgz 下下来之后要解出里面的 package/pnpm.exe —— 而候选列表里还混着
+            // GitHub 的直链 exe,引擎轮换到哪条都可能。所以下完**按内容判断**:
+            // gzip 头(1F 8B)就是 tgz,否则拿到的已经是 exe。
+            bool china = MirrorSource.IsChina(o.SourcePreference);
+            string tgzPath = Path.Combine(o.TempRoot, "pnpm-win-x64-" + DefaultPnpmVersion + ".tgz");
+            string downloadTarget = china ? tgzPath : pnpmExe;
+            List<string> urls = MirrorSource.PnpmUrls(o.SourcePreference, DefaultPnpmVersion);
 
             context.Report(SharedText.T("准备中 · 下载 pnpm", "Preparing · downloading pnpm"), 10);
 
             await Task.Run(delegate
             {
                 DownloadEngine.Download(
-                    urls, pnpmExe,
+                    urls, downloadTarget,
                     delegate(DownloadProgress progress)
                     {
                         context.Report(
@@ -860,8 +869,66 @@ namespace DshInstaller.Shared.Install
                     });
             }, token).ConfigureAwait(false);
 
+            if (china)
+            {
+                MaterializePnpm(context, downloadTarget, pnpmExe);
+            }
+
             context.Log("pnpm 已就位:" + pnpmExe);
             context.Report(SharedText.T("完成", "Done"), 100);
+        }
+
+        /// <summary>
+        /// 把下下来的东西变成 <c>pnpm.exe</c>。
+        ///
+        /// 两种可能:拿到的是 npmmirror 的 tgz(gzip 头 1F 8B,里面是 package/pnpm.exe),
+        /// 或者引擎轮换后拿到的已经是 GitHub 的 exe。按内容判断,不按 URL 猜。
+        /// </summary>
+        private static void MaterializePnpm(InstallContext context, string downloaded, string pnpmExe)
+        {
+            bool isGzip = false;
+            try
+            {
+                using (FileStream probe = File.OpenRead(downloaded))
+                {
+                    isGzip = probe.ReadByte() == 0x1F && probe.ReadByte() == 0x8B;
+                }
+            }
+            catch
+            {
+            }
+
+            if (!isGzip)
+            {
+                context.Log("拿到的是 pnpm.exe 本体,直接就位");
+                File.Copy(downloaded, pnpmExe, true);
+                TryDelete(downloaded);
+                return;
+            }
+
+            context.Log("从 tgz 里取 pnpm.exe");
+
+            using (FileStream file = File.OpenRead(downloaded))
+            using (System.IO.Compression.GZipStream gzip = new System.IO.Compression.GZipStream(
+                file, System.IO.Compression.CompressionMode.Decompress))
+            using (System.Formats.Tar.TarReader reader = new System.Formats.Tar.TarReader(gzip))
+            {
+                System.Formats.Tar.TarEntry entry;
+                while ((entry = reader.GetNextEntry()) != null)
+                {
+                    if (!entry.Name.EndsWith("pnpm.exe", StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    entry.ExtractToFile(pnpmExe, true);
+                    TryDelete(downloaded);
+                    return;
+                }
+            }
+
+            throw new InvalidOperationException(
+                SharedText.T("pnpm 包里没有 pnpm.exe", "The pnpm archive did not contain pnpm.exe"));
         }
 
         // ---------------------------------------------------------------- 可选:Python
@@ -896,8 +963,8 @@ namespace DshInstaller.Shared.Install
             }
 
             string fileName = "python-" + DefaultPythonVersion + "-embed-amd64.zip";
-            List<string> urls = LauncherFeed.MirrorizeAsset(
-                MirrorSource.PythonOfficial(DefaultPythonVersion), o.SourcePreference);
+            // 加速线路先试华为云(实测 15 MB/s)与 npmmirror;官方线路走 python.org。
+            List<string> urls = MirrorSource.PythonUrls(o.SourcePreference, DefaultPythonVersion);
 
             string archive = Path.Combine(o.TempRoot, fileName);
             context.Report(SharedText.T("准备中 · 下载 Python", "Preparing · downloading Python"), 5);

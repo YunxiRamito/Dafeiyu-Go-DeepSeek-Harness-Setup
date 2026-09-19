@@ -46,8 +46,12 @@ namespace DshInstaller.Shared.Install
             string raw = "https://raw.githubusercontent.com/" + repo + "/" + branch + "/" + file;
 
             // 顺序按"国内可达性"排。raw.githubusercontent 在国内经常直接超时,
-            // 所以加速前缀放前面;jsDelivr 次之(有缓存延迟,偶发 SSL 失败)。
+            // 所以加速前缀放前面。
+            //
+            // jsDelivr 那条要用**国内镜像** cdn.jsdmirror.com:官方 cdn.jsdelivr.net
+            // 实测只有 23 KB/s,而 jsdmirror 有 1.5 MB/s(同一次测试、同一个文件)。
             List<string> urls = new List<string>();
+            urls.Add("https://cdn.jsdmirror.com/gh/" + repo + "@" + branch + "/" + file);
             urls.Add("https://ghproxy.net/" + raw);
             urls.Add("https://gh-proxy.com/" + raw);
             urls.Add("https://cdn.jsdelivr.net/gh/" + repo + "@" + branch + "/" + file);
@@ -300,9 +304,12 @@ namespace DshInstaller.Shared.Install
                         }
                         else
                         {
-                            // 没给 github 字段就直接用第一个 mirrors
+                            // 没给 github 字段就直接用 mirrors 里的第一条
+                            // (这种清单只可能是加速线路自己维护的,官方线路直接跳过)
                             JsonElement mirrorsOnly;
-                            if (assets.TryGetProperty("mirrors", out mirrorsOnly) && mirrorsOnly.ValueKind == JsonValueKind.Array)
+                            if (MirrorSource.IsChina(preference)
+                                && assets.TryGetProperty("mirrors", out mirrorsOnly)
+                                && mirrorsOnly.ValueKind == JsonValueKind.Array)
                             {
                                 foreach (JsonElement item in mirrorsOnly.EnumerateArray())
                                 {
@@ -314,8 +321,15 @@ namespace DshInstaller.Shared.Install
                             }
                         }
 
+                        // mirrors 是**加速线路专属**的。官方线路下一条都不用 ——
+                        // 用户选"官方"通常是在墙外,直连 GitHub 比任何镜像都快,
+                        // 塞镜像进去只会让它多测几轮速(用户明确要求:官方就全走 GitHub)。
+                        bool useMirrors = MirrorSource.IsChina(preference);
+
                         JsonElement mirrors;
-                        if (assets.TryGetProperty("mirrors", out mirrors) && mirrors.ValueKind == JsonValueKind.Array)
+                        if (useMirrors
+                            && assets.TryGetProperty("mirrors", out mirrors)
+                            && mirrors.ValueKind == JsonValueKind.Array)
                         {
                             foreach (JsonElement item in mirrors.EnumerateArray())
                             {

@@ -33,6 +33,18 @@ namespace DshInstaller.Shared.Install
         /// <summary>单段最多重试几次(每次换一个源)。</summary>
         private const int SegmentAttempts = 3;
 
+        /// <summary>
+        /// 探测"这个源支不支持 Range"的时限。
+        ///
+        /// 必须有 —— 探的是公共服务,慢起来能挂几分钟。以前这里裸调 HttpClient,
+        /// 继承的是 30 分钟超时,而且探测期间**不发任何提示**,界面就停在上一句
+        /// "测速完成。"上,看着跟卡死一样(实测:虚拟机就卡在这儿)。
+        /// </summary>
+        private static readonly TimeSpan ProbeTimeout = TimeSpan.FromSeconds(12);
+
+        /// <summary>字节数多久没变化就算停滞:交给单连接那条路,它自带换源和停滞检测。</summary>
+        private const double StallSeconds = 30;
+
         private static readonly HttpClient Client = CreateClient();
 
         private static HttpClient CreateClient()
@@ -67,6 +79,11 @@ namespace DshInstaller.Shared.Install
                 }
 
                 // 1) 先问一句"多大、支不支持 Range"。不满足就老老实实走单连接。
+                //
+                // 先说一声再探 —— 这一步最长可能耗掉十来秒,不发提示的话
+                // 界面会停在上一句"测速完成。"上(实测被当成卡死)。
+                Notice(notice, SharedText.T("正在连接下载源…", "Connecting to the download source…"));
+
                 long total = ProbeLength(urls[0]);
                 if (total < MinimumSize)
                 {
@@ -127,6 +144,11 @@ namespace DshInstaller.Shared.Install
                 double lastSeconds = 0;
                 long lastTotal = 0;
 
+                // 停滞看门狗用的两个数:上次变化时的字节数与时刻
+                long lastStallBytes = -1;
+                double lastStallSeconds = 0;
+                double stalledSeconds = 0;
+
                 while (true)
                 {
                     if (cancellation != null && cancellation())
@@ -171,10 +193,26 @@ namespace DshInstaller.Shared.Install
                         }
                     }
 
-                    // 全都没动静了(每段都试完还失败)就放弃,让调用方回落
-                    bool anyProgress = done > 0;
-                    if (elapsed > 90 && !anyProgress)
+                    // 停滞看门狗:**字节数**连续 30 秒没变化就放弃。
+                    //
+                    // 为什么不能只看 elapsed + anyProgress:那样只要开头来过几 KB,
+                    // 后面彻底卡死也会一直等到半小时上限 —— 界面停在某个百分比上,
+                    // 用户只能干等(实测:几个公共加速前缀慢起来就是这样)。
+                    // 放弃之后走单连接那条路,它自带 10 秒停滞检测和换源重试。
+                    if (done > lastStallBytes)
                     {
+                        lastStallBytes = done;
+                        lastStallSeconds = elapsed;
+                        stalledSeconds = 0;
+                    }
+                    else
+                    {
+                        stalledSeconds = elapsed - lastStallSeconds;
+                    }
+
+                    if (stalledSeconds >= StallSeconds)
+                    {
+                        InstallLogger.Write("分段下载停滞 " + (int)stalledSeconds + " 秒,放弃并回落单连接");
                         return false;
                     }
 
@@ -252,12 +290,15 @@ namespace DshInstaller.Shared.Install
         {
             try
             {
+                // 限时:探测失败就当"不支持 Range",原样回落单连接 ——
+                // 比在这里挂半小时强得多
+                using (CancellationTokenSource timeout = new CancellationTokenSource(ProbeTimeout))
                 using (HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Get, url))
                 {
                     request.Headers.Range = new RangeHeaderValue(0, 0);
 
                     using (HttpResponseMessage response = Client
-                        .SendAsync(request, HttpCompletionOption.ResponseHeadersRead)
+                        .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token)
                         .GetAwaiter().GetResult())
                     {
                         if (response.StatusCode != System.Net.HttpStatusCode.PartialContent)
