@@ -297,33 +297,15 @@ namespace DshInstaller.Shared.Install
                     JsonElement assets;
                     if (root.TryGetProperty("assets", out assets) && assets.ValueKind == JsonValueKind.Object)
                     {
-                        JsonElement github;
-                        if (assets.TryGetProperty("github", out github) && github.ValueKind == JsonValueKind.String)
-                        {
-                            release.Urls.AddRange(MirrorizeAsset(github.GetString(), preference));
-                        }
-                        else
-                        {
-                            // 没给 github 字段就直接用 mirrors 里的第一条
-                            // (这种清单只可能是加速线路自己维护的,官方线路直接跳过)
-                            JsonElement mirrorsOnly;
-                            if (MirrorSource.IsChina(preference)
-                                && assets.TryGetProperty("mirrors", out mirrorsOnly)
-                                && mirrorsOnly.ValueKind == JsonValueKind.Array)
-                            {
-                                foreach (JsonElement item in mirrorsOnly.EnumerateArray())
-                                {
-                                    if (item.ValueKind == JsonValueKind.String)
-                                    {
-                                        release.Urls.Add(item.GetString());
-                                    }
-                                }
-                            }
-                        }
-
-                        // mirrors 是**加速线路专属**的。官方线路下一条都不用 ——
-                        // 用户选"官方"通常是在墙外,直连 GitHub 比任何镜像都快,
-                        // 塞镜像进去只会让它多测几轮速(用户明确要求:官方就全走 GitHub)。
+                        // **镜像排在最前面。**
+                        //
+                        // 清单里的 mirrors 是人工挑过的国内镜像(实测 1.5 MB/s),
+                        // 而 github 那条要套 ghproxy 前缀(几十到一百多 KB/s,抖得厉害)。
+                        // 顺序反了的话,配合"只测前三个节点"就等于**从来没测过镜像**
+                        // —— 表现是"明明配了 jsdmirror,安装器还是走 GitHub"(实测踩过)。
+                        //
+                        // mirrors 是加速线路专属的:官方线路下一条都不用 ——
+                        // 用户选"官方"通常是在墙外,直连 GitHub 比任何镜像都快。
                         bool useMirrors = MirrorSource.IsChina(preference);
 
                         JsonElement mirrors;
@@ -342,6 +324,17 @@ namespace DshInstaller.Shared.Install
                                     }
                                 }
                             }
+                        }
+
+                        JsonElement github;
+                        if (assets.TryGetProperty("github", out github) && github.ValueKind == JsonValueKind.String)
+                        {
+                            release.Urls.AddRange(MirrorizeAsset(github.GetString(), preference));
+                        }
+                        else if (!useMirrors)
+                        {
+                            // 没给 github 字段、又是官方线路:没什么可用的了
+                            InstallLogger.Write("清单里既没有 github 字段,mirrors 在官方线路下也不采用");
                         }
                     }
                     else
