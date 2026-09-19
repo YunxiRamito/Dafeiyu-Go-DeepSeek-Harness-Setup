@@ -137,7 +137,12 @@ namespace DshInstaller.Shared.Install
             // 引擎原来的规矩是"谁排前面用谁,只有失败才换",于是抽到慢源就一直慢到底 ——
             // 那几个 GitHub 加速前缀在晚高峰能差一个数量级(实测 10 KB/s vs 2 MB/s)。
             // 排序后如果全都测不出来,顺序保持原样,行为跟以前一致。
-            List<string> ordered = SpeedProbe.RankBySpeed(urls, onNotice);
+            // **不测速。**
+            //
+            // 分流之后候选本身就是人工排好的「国内镜像 → 官方兜底」,再花十几秒测一遍
+            // 只是让用户干等(测速阶段界面是不动的)。真遇到慢的源,下载过程中会自动换
+            // —— 见下面"连续 5 秒低于 60 KB/s"那条,那才是真正管用的判据。
+            List<string> ordered = new List<string>(urls);
 
             // 大文件先试 8 连接分段 —— 那几家加速前缀普遍按**连接**限速,
             // 单连接 173 KB/s 换成 8 条常见能到三倍以上。
@@ -247,6 +252,18 @@ namespace DshInstaller.Shared.Install
             }
         }
 
+        /// <summary>
+        /// 低于这个速度、并持续 <see cref="SlowSeconds"/> 秒,就认定"这个源不行了",换下一个。
+        ///
+        /// 为什么用**下载中的实测速度**而不是开下前测速:测速测的是"这几秒里它多快",
+        /// 公共代理前几秒快后几秒掉到几十 KB 是常态;真正要判的是"它现在还在不在好好干活"。
+        /// 换源靠 .part 续传,已经下到的部分不白费。
+        /// </summary>
+        private const long SlowBytesPerSecond = 60 * 1024;
+
+        /// <summary>慢多久算该换源了。</summary>
+        private const double SlowSeconds = 5;
+
         private static void DownloadOne(
             string url,
             string partialPath,
@@ -323,6 +340,7 @@ namespace DshInstaller.Shared.Install
                     Stopwatch clock = Stopwatch.StartNew();
                     long windowBytes = 0;
                     double lastReportSeconds = 0;
+                    double slowSinceSeconds = -1;
 
                     using (Stream remote = response.Content.ReadAsStream())
                     using (FileStream local = new FileStream(
@@ -358,6 +376,28 @@ namespace DshInstaller.Shared.Install
                                 state.BytesPerSecond = windowBytes / (windowSeconds <= 0 ? 0.25 : windowSeconds);
                                 windowBytes = 0;
                                 lastReportSeconds = elapsed;
+
+                                // 太慢就换源:连续 5 秒都不到 60 KB/s,再耗着就是白等。
+                                // 抛出异常会被上面的尝试循环接住 —— 换下一个源、带着 Range 续传接着下。
+                                if (state.BytesPerSecond < SlowBytesPerSecond)
+                                {
+                                    if (slowSinceSeconds < 0)
+                                    {
+                                        slowSinceSeconds = elapsed;
+                                    }
+                                    else if (elapsed - slowSinceSeconds >= SlowSeconds)
+                                    {
+                                        throw new TimeoutException(SharedText.T(
+                                            "这个源太慢(" + (int)(state.BytesPerSecond / 1024) + " KB/s),换一个",
+                                            "Source too slow (" + (int)(state.BytesPerSecond / 1024) + " KB/s); switching"));
+                                    }
+                                }
+                                else
+                                {
+                                    // 缓过来了就当没慢过 —— 网络抖动一下不该被换掉
+                                    slowSinceSeconds = -1;
+                                }
+
                                 if (progress != null)
                                 {
                                     progress(state);

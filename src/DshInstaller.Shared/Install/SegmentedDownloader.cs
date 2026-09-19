@@ -45,6 +45,12 @@ namespace DshInstaller.Shared.Install
         /// <summary>字节数多久没变化就算停滞:交给单连接那条路,它自带换源和停滞检测。</summary>
         private const double StallSeconds = 30;
 
+        /// <summary>八条连接**加起来**都低于这个速度,就算这个源没带宽(用户定的阈值:60 KB/s)。</summary>
+        private const long SlowThresholdBytesPerSecond = 60 * 1024;
+
+        /// <summary>低于上面那个速度持续多久就换源。</summary>
+        private const double SlowThresholdSeconds = 5;
+
         private static readonly HttpClient Client = CreateClient();
 
         private static HttpClient CreateClient()
@@ -149,6 +155,11 @@ namespace DshInstaller.Shared.Install
                 double lastStallSeconds = 0;
                 double stalledSeconds = 0;
 
+                // 慢速看门狗:同样的两个数,阈值换成速度(0 起步,算的是窗口速率)
+                long lastSlowBytes = 0;
+                double lastSlowSeconds = 0;
+                double slowSeconds = 0;
+
                 while (true)
                 {
                     if (cancellation != null && cancellation())
@@ -213,6 +224,32 @@ namespace DshInstaller.Shared.Install
                     if (stalledSeconds >= StallSeconds)
                     {
                         InstallLogger.Write("分段下载停滞 " + (int)stalledSeconds + " 秒,放弃并回落单连接");
+                        return false;
+                    }
+
+                    // 慢也当没戏:八条连接**加起来**都不到 60 KB/s,说明这个源本身没带宽,
+                    // 再挂八条也一样 —— 早点回落单连接去换源(用户定的阈值:5 秒)。
+                    //
+                    // 这里必须算**速率**,不能像上面停滞那样判"字节数变没变":
+                    // 八条连接慢慢爬的时候 done 每轮都在涨,只是慢得可笑。
+                    double slowWindow = elapsed - lastSlowSeconds;
+                    if (slowWindow >= 1.0)
+                    {
+                        double windowSpeed = (done - lastSlowBytes) / slowWindow;
+                        lastSlowBytes = done;
+                        lastSlowSeconds = elapsed;
+
+                        slowSeconds = windowSpeed < SlowThresholdBytesPerSecond
+                            ? slowSeconds + slowWindow
+                            : 0;
+                    }
+
+                    if (slowSeconds >= SlowThresholdSeconds)
+                    {
+                        InstallLogger.Write(
+                            "分段下载持续低于 " + (SlowThresholdBytesPerSecond / 1024)
+                            + " KB/s 达 " + (int)slowSeconds + " 秒,换源");
+
                         return false;
                     }
 
