@@ -1,9 +1,16 @@
 # 交接:大肥鱼Go / Dafeiyu-Go
 
-> 给下一个接手的人(或下一个 AI)。读完这份 + 两个仓库各自的 `STATUS.md` / `RELEASE.md`
-> 就能上手。**接手第一件事:把「待验证」那节跑完**,里面两条路是本轮唯一没实测过的。
+> 给下一个接手的人(或下一个 AI)。当前发布版本为 `1.4.9`，启动器与安装器
+> 已改为同版本同步发布。第一入口请先读父级
+> `G:\DeepSeek DSH\DSH Works\Project\Dafeiyu-Go\HANDOVER.md`，再读本文件、
+> `STATUS.md`、`RELEASE.md` 和 `TRANSITION.md`。
 
-最后更新:2026-09-19 夜
+最后更新:2026-09-22
+
+> **下个大版本硬要求**：安装器改为静态或自包含编译，不再依赖目标机预装
+> .NET 8 和 Windows App Runtime；安装器、卸载器与辅助文件放入
+> `<DSH 根目录>\dsh`；更新启动器时必须同步发布安装器和卸载器。
+> 详细迁移要求见父级 `Dafeiyu-Go\HANDOVER.md` 第六章。
 
 ---
 
@@ -11,8 +18,8 @@
 
 | 项目 | 路径 | 干什么 |
 |------|------|--------|
-| **Dafeiyu-Go Setup** | `G:\DeepSeek DSH\DSH Works\DSH Installer` | 装机程序。检测环境 → 补运行库 → 装 DSH 本体 → 部署启动器 → 建快捷方式 → 可卸载 |
-| **Dafeiyu-Go Launcher** | `G:\DeepSeek DSH\DSH Works\Project\DeepSeek Starter` | 托盘启动器(WinUI3),负责跑 DSH 本体、自更新、开机静默启动 |
+| **Dafeiyu-Go Setup** | `G:\DeepSeek DSH\DSH Works\Project\Dafeiyu-Go\Dafeiyu-Go-DeepSeek-Harness-Setup` | 装机程序。检测环境 → 补运行库 → 装 DSH 本体 → 部署启动器 → 建快捷方式 → 可卸载 |
+| **Dafeiyu-Go Launcher** | `G:\DeepSeek DSH\DSH Works\Project\Dafeiyu-Go\Dafeiyu-Go-DeepSeek-Harness-Click-To-Run` | 托盘启动器(WinUI3),负责跑 DSH 本体、自更新、开机静默启动 |
 
 **关系**:安装器**不把启动器打进包里**(那样每发一次启动器就得重发安装器)。
 装的时候去读启动器仓库的 `manifest.json` 拿版本号和校验值,再去下载。
@@ -97,7 +104,7 @@
 
 - 版本号收敛到 **`Directory.Build.props` 一处**;`WellKnown.InstallerVersion`
   改成从程序集读(以前两处硬编码,改一处漏一处)
-- 安装器 `1.0.1`;GitHub Release `v1.0.0` 已发(资产换成带版本信息的那份)
+- 安装器 `1.4.9`;GitHub Release `v1.4.9` 已发布，资产为 `DSH-Installer-Setup.exe`
 - 安装器仓库加了 `.github/workflows/release.yml` + `RELEASE.md`
 
 ---
@@ -114,7 +121,7 @@
    但没验过"安装器读清单 → 拼 npm 地址 → 下 tgz → 解出 zip → 校验 → 解压"这条完整流程。
 3. **启动器自更新** —— 刚接上 npmmirror(见启动器仓库最近一次提交),
    **一次都没跑过**。升级到旧版本再点"检查更新"就能验。
-4. **安装器 1.0.1 的 Release** —— 只在虚拟机上试,还没发 Release。
+4. **安装器 `1.4.9` 真机升级回归** —— Release 已发布，仍需覆盖旧安装记录实测。
 
 跑完把 `%LOCALAPPDATA%\DeepSeekHarness\installer.log` 和启动器的 `launcher.log` 拿来看,
 里面会写明用了哪个源、多少速度、从哪儿解包。
@@ -127,12 +134,12 @@
 
 ```powershell
 # 安装器
-cd 'G:\DeepSeek DSH\DSH Works\DSH Installer'
+cd 'G:\DeepSeek DSH\DSH Works\Project\Dafeiyu-Go\Dafeiyu-Go-DeepSeek-Harness-Setup'
 .\pack-release.ps1                 # 出包并拷到桌面
 .\pack-release.ps1 -NoDesktop      # 只出包
 
 # 启动器
-cd 'G:\DeepSeek DSH\DSH Works\Project\DeepSeek Starter'
+cd 'G:\DeepSeek DSH\DSH Works\Project\Dafeiyu-Go\Dafeiyu-Go-DeepSeek-Harness-Click-To-Run'
 .\release.ps1                      # 出包 + 更新清单
 .\publish-npm.ps1                  # 发 npm(见下)
 ```

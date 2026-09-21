@@ -14,14 +14,14 @@
 ## 我在哪
 
 ```
-G:\DeepSeek DSH\DSH Works\DSH Installer
+G:\DeepSeek DSH\DSH Works\Project\Dafeiyu-Go\Dafeiyu-Go-DeepSeek-Harness-Setup
 ```
 
 配套项目(DSH 启动器,本安装器负责把它铺出去):
 
 ```
-G:\DeepSeek DSH\DSH Works\Project\DeepSeek Starter   (版本 1.3.9)
-G:\DeepSeek DSH\DSH Works\Project\DeepSeek Starter\source\dist-1.3.9
+G:\DeepSeek DSH\DSH Works\Project\Dafeiyu-Go\Dafeiyu-Go-DeepSeek-Harness-Click-To-Run
+G:\DeepSeek DSH\DSH Works\Project\Dafeiyu-Go\Dafeiyu-Go-DeepSeek-Harness-Click-To-Run\source\dist-1.4.9
 ```
 
 DSH 本体(被装的宿主):
@@ -534,7 +534,7 @@ DSH Installer\
 ### 开发小工具
 
 ```powershell
-cd 'G:\DeepSeek DSH\DSH Works\DSH Installer'
+cd 'G:\DeepSeek DSH\DSH Works\Project\Dafeiyu-Go\Dafeiyu-Go-DeepSeek-Harness-Setup'
 $env:NUGET_PACKAGES = 'G:\DeepSeek DSH\.nuget-packages'
 & 'G:\DeepSeek DSH\.tools\dotnet\dotnet.exe' run --project .\tools\Probe -c Release
 ```
@@ -558,7 +558,7 @@ $env:NUGET_PACKAGES = 'G:\DeepSeek DSH\.nuget-packages'
 改代码之前先跑一次全量编译确认没烂:
 
 ```powershell
-cd 'G:\DeepSeek DSH\DSH Works\DSH Installer'
+cd 'G:\DeepSeek DSH\DSH Works\Project\Dafeiyu-Go\Dafeiyu-Go-DeepSeek-Harness-Setup'
 $env:NUGET_PACKAGES = 'G:\DeepSeek DSH\.nuget-packages'
 & 'G:\DeepSeek DSH\.tools\dotnet\dotnet.exe' build .\src\DshInstaller\DshInstaller.csproj -c Release
 ```

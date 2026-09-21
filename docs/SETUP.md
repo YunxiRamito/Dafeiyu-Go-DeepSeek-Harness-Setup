@@ -19,7 +19,7 @@ $env:NUGET_PACKAGES = 'G:\DeepSeek DSH\.nuget-packages'
 
 ```powershell
 # 只编共享库(改核心逻辑时最快)
-cd 'G:\DeepSeek DSH\DSH Works\DSH Installer'
+cd 'G:\DeepSeek DSH\DSH Works\Project\Dafeiyu-Go\Dafeiyu-Go-DeepSeek-Harness-Setup'
 $env:NUGET_PACKAGES = 'G:\DeepSeek DSH\.nuget-packages'
 & 'G:\DeepSeek DSH\.tools\dotnet\dotnet.exe' build .\src\DshInstaller.Shared\DshInstaller.Shared.csproj -c Release
 
@@ -65,7 +65,7 @@ dist\
 启动器源码在另一个项目(版本号见 `build.ps1` 里的 `$launcherOut`):
 
 ```powershell
-cd 'G:\DeepSeek DSH\DSH Works\Project\DeepSeek Starter\source'
+cd 'G:\DeepSeek DSH\DSH Works\Project\Dafeiyu-Go\Dafeiyu-Go-DeepSeek-Harness-Click-To-Run\source'
 $env:NUGET_PACKAGES = 'G:\DeepSeek DSH\.nuget-packages'
 .\build-winui.ps1 -OutputDirectory (Join-Path $PWD 'dist-1.3.21')
 # 再手动编外层引导

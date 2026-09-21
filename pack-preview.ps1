@@ -4,7 +4,7 @@
 $ErrorActionPreference = 'Stop'
 $OutputEncoding = [Console]::OutputEncoding = [Text.Encoding]::UTF8
 
-$root = 'G:\DeepSeek DSH\DSH Works\DSH Installer'
+$root = $PSScriptRoot
 $dotnet = 'G:\DeepSeek DSH\.tools\dotnet\dotnet.exe'
 $env:NUGET_PACKAGES = 'G:\DeepSeek DSH\.nuget-packages'
 

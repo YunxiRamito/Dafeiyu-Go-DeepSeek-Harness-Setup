@@ -26,7 +26,7 @@ DSH-Installer-Setup.exe     单个 exe,双击即用(约 11 MB)
 ## 一、省事版:一条命令
 
 ```powershell
-cd 'G:\DeepSeek DSH\DSH Works\DSH Installer'
+cd 'G:\DeepSeek DSH\DSH Works\Project\Dafeiyu-Go\Dafeiyu-Go-DeepSeek-Harness-Setup'
 .\pack-release.ps1
 ```
 
@@ -51,8 +51,8 @@ git add -A
 git commit -m "release: v1.4.9"
 git push
 
-git tag v1.0.0
-git push origin v1.0.0
+git tag v1.4.9
+git push origin v1.4.9
 ```
 
 `v*` 的 tag 一推,`.github/workflows/release.yml` 就会:
