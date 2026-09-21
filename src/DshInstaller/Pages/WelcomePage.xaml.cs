@@ -6,8 +6,7 @@ using DshInstaller.Controls;
 namespace DshInstaller.Pages
 {
     /// <summary>
-    /// 欢迎页。品牌区用官方素材:鲸鱼标 + "deepseek HARNESS" 矢量字样。
-    /// 字样是 SVG 字形不是字体,所以必须走 DshBrand.Wordmark,别用 TextBlock 凑。
+    /// 欢迎页。保留鲸鱼标作为 DeepSeek Harness 兼容标识，产品名称显示为大肥鱼Go。
     /// </summary>
     public sealed partial class WelcomePage : Page, IWizardPage
     {
@@ -16,6 +15,11 @@ namespace DshInstaller.Pages
             InitializeComponent();
             BuildBrand();
             ApplyText();
+            ActualThemeChanged += delegate
+            {
+                BuildBrand();
+                ApplyText();
+            };
         }
 
         public bool CanGoNext
@@ -32,9 +36,10 @@ namespace DshInstaller.Pages
         {
             MarkHost.Children.Clear();
             MarkHost.Children.Add(DshBrand.Mark(56));
-
-            WordmarkHost.Children.Clear();
-            WordmarkHost.Children.Add(DshBrand.Wordmark(26));
+            WordmarkText.Text = Localization.IsChinese ? "大肥鱼Go" : "Dafeiyu-Go";
+            WordmarkEnglish.Text = Localization.IsChinese
+                ? "Dafeiyu-Go"
+                : "DeepSeek Harness Installer & Launcher";
         }
 
         private void ApplyText()

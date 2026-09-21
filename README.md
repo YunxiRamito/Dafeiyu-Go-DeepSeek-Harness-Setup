@@ -1,17 +1,20 @@
-# DSH Installer
+# 大肥鱼Go / Dafeiyu-Go Setup
 
-**DeepSeek Harness (DSH) 的一体化 Windows 安装程序。**
-An all-in-one Windows installer for **DeepSeek Harness (DSH)**.
+**大肥鱼Go，面向 DeepSeek Harness (DSH) 的一体化 Windows 安装程序。**
+**Dafeiyu-Go, an all-in-one Windows setup for DeepSeek Harness (DSH).**
 
-仓库名 `dsh-installer` · MIT 协议 / Repository `dsh-installer` · MIT License
+仓库名 `Dafeiyu-Go-DeepSeek-Harness-Setup` · MIT 协议 / MIT License
+
+> **1.4.9 过渡版**：显示名称与界面先切换为“大肥鱼Go / Dafeiyu-Go”，
+> 安装包、卸载注册表键和数据目录保持兼容。详见 [`TRANSITION.md`](TRANSITION.md)。
 
 ---
 
 ## 这是什么 / What it is
 
-DSH Installer 将「在一台干净的 Windows 机器上部署可用的 DSH」这一过程简化为一次双击。它负责检测环境、补齐缺失的依赖、安装 DSH 本体、部署启动器托盘程序、创建快捷方式，并提供独立的卸载程序。
+Dafeiyu-Go Setup 将「在一台干净的 Windows 机器上部署可用的 DSH」这一过程简化为一次双击。它负责检测环境、补齐缺失的依赖、安装 DSH 本体、部署启动器托盘程序、创建快捷方式，并提供独立的卸载程序。
 
-DSH Installer reduces the task of getting DSH running on a clean Windows machine to a single double-click. It detects the environment, fills in missing prerequisites, installs DSH itself, lays down the launcher tray app, creates shortcuts, and ships a standalone uninstaller.
+Dafeiyu-Go Setup reduces the task of getting DSH running on a clean Windows machine to a single double-click. It detects the environment, fills in missing prerequisites, installs DSH itself, lays down the launcher tray app, creates shortcuts, and ships a standalone uninstaller.
 
 一个安装器，而非一系列手工步骤：
 
@@ -109,9 +112,9 @@ The package is roughly **11 MB**. That is not achieved by cutting features, but 
 
 **Runtimes are fetched on demand.** If .NET 8 Desktop Runtime and Windows App Runtime 1.8 already exist, that step is skipped entirely; only what is missing gets installed. Nobody is forced to pull a hundred-plus megabytes of runtime just to install a tool.
 
-**启动器走 manifest 现下最新版。** 安装器不内置启动器，而是安装时去读 `YunxiRamito/DSH-Launcher` 仓库根目录的 `manifest.json`，拿到最新版 zip 地址和 sha256 再下载。这样启动器发新版时，安装器不需要重新发布。
+**启动器走 manifest 现下最新版。** 安装器不内置启动器，而是安装时优先读取 `YunxiRamito/Dafeiyu-Go-DeepSeek-Harness-Click-To-Run` 仓库根目录的 `manifest.json`，拿不到时回退旧仓库 `YunxiRamito/DSH-Launcher`。这样启动器发新版时，安装器不需要重新发布。
 
-**The launcher is resolved from a manifest.** The installer does not embed the launcher. At install time it reads `manifest.json` from the root of the `YunxiRamito/DSH-Launcher` repository, gets the latest zip URL plus its sha256, and downloads that. Launcher releases therefore do not require a new installer release.
+**The launcher is resolved from a manifest.** The installer does not embed the launcher. At install time it reads `manifest.json` from `YunxiRamito/Dafeiyu-Go-DeepSeek-Harness-Click-To-Run`, with `YunxiRamito/DSH-Launcher` as a transition fallback.
 
 清单拉不到（断网、仓库不可用）时，回落到安装器自带的 `payload\launcher.zip`。
 
@@ -282,9 +285,9 @@ dotnet build src\DshInstaller.Shared\DshInstaller.Shared.csproj -c Release
 | `STATUS.md` | 开发交接文档 / Development handover notes |
 | `pack-preview.ps1` `pack-release.ps1` `build.ps1` | 构建脚本 / Build scripts |
 
-启动器是**另一个独立仓库**（`YunxiRamito/DSH-Launcher`）。本安装器只负责把它正确地铺到目标目录。
+启动器是**另一个独立仓库**（`YunxiRamito/Dafeiyu-Go-DeepSeek-Harness-Click-To-Run`）。本安装器只负责把它正确地铺到目标目录。
 
-The launcher lives in a **separate repository** (`YunxiRamito/DSH-Launcher`). This installer is only responsible for deploying it correctly.
+The launcher lives in a **separate repository** (`YunxiRamito/Dafeiyu-Go-DeepSeek-Harness-Click-To-Run`). This installer is only responsible for deploying it correctly.
 
 ---
 
@@ -334,7 +337,7 @@ MIT License. 详见仓库中的 `LICENSE`。 / MIT License — see `LICENSE` in 
 
 ## 相关仓库 / Related repositories
 
-- 启动器 / Launcher: [`YunxiRamito/DSH-Launcher`](https://github.com/YunxiRamito/DSH-Launcher) — 托盘程序，本安装器负责铺装 / the tray app this installer deploys
+- 启动器 / Launcher: [`YunxiRamito/Dafeiyu-Go-DeepSeek-Harness-Click-To-Run`](https://github.com/YunxiRamito/Dafeiyu-Go-DeepSeek-Harness-Click-To-Run) — 托盘程序，本安装器负责铺装 / the tray app this installer deploys
 - DSH 本体 / DSH itself: npm 包 `@deepseek-ai/dsh` / the npm package `@deepseek-ai/dsh`
 
 感谢 DeepSeek Harness 与 Windows App SDK 社区的工作。

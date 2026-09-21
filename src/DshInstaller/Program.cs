@@ -274,7 +274,7 @@ namespace DshInstaller
             {
                 System.Windows.Forms.MessageBox.Show(
                     message,
-                    "DeepSeek Harness 安装程序",
+                    "大肥鱼Go安装程序",
                     System.Windows.Forms.MessageBoxButtons.OK,
                     System.Windows.Forms.MessageBoxIcon.Error);
             }

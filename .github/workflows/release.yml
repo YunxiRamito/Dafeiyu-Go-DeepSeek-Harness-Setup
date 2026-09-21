@@ -91,7 +91,7 @@ jobs:
           files: dist/DSH-Installer-Setup.exe
           generate_release_notes: true
           body: |
-            单文件安装包 `DSH-Installer-Setup.exe`(约 11 MB)。
+            大肥鱼Go单文件安装包 `DSH-Installer-Setup.exe`(约 11 MB)。
 
             双击即用:安装器会先检查 .NET 8 桌面运行时与 Windows App Runtime,
             缺哪个下哪个,装好之后再拉起向导。

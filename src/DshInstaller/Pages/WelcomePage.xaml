@@ -11,10 +11,22 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <!-- 品牌区:鲸鱼标 + 官方字样 -->
+        <!-- 品牌区:保留鲸鱼标，产品字样切换为大肥鱼Go。 -->
         <StackPanel Grid.Row="0" VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="16">
             <Grid x:Name="MarkHost" HorizontalAlignment="Center" />
-            <StackPanel x:Name="WordmarkHost" HorizontalAlignment="Center" />
+            <StackPanel x:Name="WordmarkHost" HorizontalAlignment="Center" Spacing="2">
+                <TextBlock x:Name="WordmarkText"
+                           HorizontalAlignment="Center"
+                           FontSize="30"
+                           FontWeight="SemiBold"
+                           Foreground="{ThemeResource PrimaryTextBrush}"
+                           Text="大肥鱼Go" />
+                <TextBlock x:Name="WordmarkEnglish"
+                           HorizontalAlignment="Center"
+                           FontSize="12"
+                           Foreground="{ThemeResource SecondaryTextBrush}"
+                           Text="Dafeiyu-Go" />
+            </StackPanel>
             <TextBlock x:Name="DescText"
                        FontSize="13"
                        HorizontalAlignment="Center"

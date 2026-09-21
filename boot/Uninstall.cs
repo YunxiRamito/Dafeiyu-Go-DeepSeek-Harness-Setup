@@ -417,7 +417,7 @@ internal static class Uninstall
     {
         try
         {
-            MessageBox.Show(message, "DeepSeek Harness 卸载", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        MessageBox.Show(message, "大肥鱼Go卸载", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
         catch
         {

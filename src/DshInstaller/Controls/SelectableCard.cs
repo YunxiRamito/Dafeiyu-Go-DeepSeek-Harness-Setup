@@ -27,6 +27,7 @@ namespace DshInstaller.Controls
         private readonly TextBlock _path;
 
         private bool _selected;
+        private bool _pointerOver;
 
         public SelectableCard()
         {
@@ -110,6 +111,28 @@ namespace DshInstaller.Controls
             _surface.Child = layout;
             Content = _surface;
 
+            Theme.Bind(
+                _title,
+                TextBlock.ForegroundProperty,
+                "PrimaryTextBrush",
+                Windows.UI.Color.FromArgb(255, 15, 15, 16));
+            Theme.Bind(
+                _description,
+                TextBlock.ForegroundProperty,
+                "SecondaryTextBrush",
+                Windows.UI.Color.FromArgb(255, 92, 99, 110));
+            Theme.Bind(
+                _path,
+                TextBlock.ForegroundProperty,
+                "TertiaryTextBrush",
+                Windows.UI.Color.FromArgb(255, 138, 144, 153));
+
+            ApplyTheme();
+            ActualThemeChanged += delegate
+            {
+                ApplyTheme();
+            };
+
             Tapped += OnTapped;
             PointerEntered += OnPointerEntered;
             PointerExited += OnPointerExited;
@@ -182,6 +205,14 @@ namespace DshInstaller.Controls
             }
         }
 
+        private void ApplyTheme()
+        {
+            _surface.Background = _pointerOver
+                ? Theme.Brush("HoverBrush", Windows.UI.Color.FromArgb(15, 0, 0, 0))
+                : Theme.Brush("CardBackgroundBrush", Windows.UI.Color.FromArgb(255, 255, 255, 255));
+            Refresh();
+        }
+
         private void OnTapped(object sender, TappedRoutedEventArgs e)
         {
             if (!_selected)
@@ -192,6 +223,7 @@ namespace DshInstaller.Controls
 
         private void OnPointerEntered(object sender, PointerRoutedEventArgs e)
         {
+            _pointerOver = true;
             if (!_selected)
             {
                 _surface.Background = Theme.Brush("HoverBrush", Windows.UI.Color.FromArgb(15, 0, 0, 0));
@@ -200,6 +232,7 @@ namespace DshInstaller.Controls
 
         private void OnPointerExited(object sender, PointerRoutedEventArgs e)
         {
+            _pointerOver = false;
             _surface.Background = Theme.Brush("CardBackgroundBrush", Windows.UI.Color.FromArgb(255, 255, 255, 255));
         }
     }

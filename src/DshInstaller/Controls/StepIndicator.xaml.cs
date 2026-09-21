@@ -26,6 +26,10 @@ namespace DshInstaller.Controls
         {
             InitializeComponent();
             Build();
+            ActualThemeChanged += delegate
+            {
+                Refresh();
+            };
         }
 
         /// <summary>

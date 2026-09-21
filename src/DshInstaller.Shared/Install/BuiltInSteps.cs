@@ -618,18 +618,41 @@ namespace DshInstaller.Shared.Install
 
             LauncherRelease release = await Task.Run(delegate
             {
-                try
+                string[] repositories = new string[]
                 {
-                    return LauncherFeed.Fetch(
-                        WellKnown.LauncherRepository,
-                        o.SourcePreference,
-                        WellKnown.LauncherBranch);
-                }
-                catch (Exception exception)
+                    WellKnown.LauncherRepository,
+                    WellKnown.LegacyLauncherRepository
+                };
+
+                for (int index = 0; index < repositories.Length; index++)
                 {
-                    context.Log("清单拉取失败:" + exception.Message);
-                    return null;
+                    try
+                    {
+                        LauncherRelease candidate = LauncherFeed.Fetch(
+                            repositories[index],
+                            o.SourcePreference,
+                            WellKnown.LauncherBranch);
+                        if (candidate != null
+                            && candidate.Urls != null
+                            && candidate.Urls.Count > 0)
+                        {
+                            if (index > 0)
+                            {
+                                context.Log("新启动器仓库不可用，已回退旧仓库: "
+                                    + repositories[index]);
+                            }
+
+                            return candidate;
+                        }
+                    }
+                    catch (Exception exception)
+                    {
+                        context.Log("清单拉取失败(" + repositories[index] + "):"
+                            + exception.Message);
+                    }
                 }
+
+                return null;
             }, token).ConfigureAwait(false);
 
             if (release == null || release.Urls == null || release.Urls.Count == 0)
@@ -1482,6 +1505,22 @@ namespace DshInstaller.Shared.Install
 
             if (o.CreateDesktopShortcut)
             {
+                string legacyLink = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory),
+                    WellKnown.LegacyProductName + ".lnk");
+                try
+                {
+                    if (File.Exists(legacyLink))
+                    {
+                        File.Delete(legacyLink);
+                        context.Log("已迁移旧桌面快捷方式:" + legacyLink);
+                    }
+                }
+                catch (Exception exception)
+                {
+                    context.Log("清理旧桌面快捷方式失败:" + exception.Message);
+                }
+
                 bool ok = ShellLink.Create(new ShellLink.ShortcutSpec
                 {
                     Path = link,
@@ -1514,8 +1553,25 @@ namespace DshInstaller.Shared.Install
                             WellKnown.ProductName)
                         : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Programs),
                             WellKnown.ProductName);
+                    string legacyPrograms = o.AllUsers
+                        ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonPrograms),
+                            WellKnown.LegacyProductName)
+                        : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Programs),
+                            WellKnown.LegacyProductName);
 
                     Directory.CreateDirectory(programs);
+                    try
+                    {
+                        if (Directory.Exists(legacyPrograms))
+                        {
+                            Directory.Delete(legacyPrograms, true);
+                            context.Log("已迁移旧开始菜单目录:" + legacyPrograms);
+                        }
+                    }
+                    catch (Exception exception)
+                    {
+                        context.Log("清理旧开始菜单目录失败:" + exception.Message);
+                    }
 
                     string startLink = Path.Combine(programs, WellKnown.ProductName + ".lnk");
                     bool startOk = ShellLink.Create(new ShellLink.ShortcutSpec

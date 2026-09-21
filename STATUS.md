@@ -1,4 +1,4 @@
-# DSH Installer — 项目状态
+# 大肥鱼Go / Dafeiyu-Go Setup — 项目状态
 
 > 这份文档是给"下一个我"看的。每次开工先读这里,收工前更新这里。
 > 最后更新:2026-09-19 夜(本轮 15 处修复 + 发布到 GitHub)
@@ -7,7 +7,7 @@
 
 ## 一句话
 
-给 **DeepSeek Harness(DSH)** 做一体化的 WinUI3 安装程序:检测环境 → 缺什么补什么 → 装 DSH 本体 → 装启动器 → 建快捷方式 → 可卸载。中英双语,只支持 Windows 10 1809 (build 17763) 及以上。
+为大肥鱼Go做一体化的 WinUI3 安装程序，底层面向 **DeepSeek Harness(DSH)**：检测环境 → 缺什么补什么 → 装 DSH 本体 → 装启动器 → 建快捷方式 → 可卸载。中英双语，只支持 Windows 10 1809 (build 17763) 及以上。
 
 ---
 
@@ -44,7 +44,7 @@ G:\DeepSeek DSH\DeepSeek Harness   (启动器部署目标)
 | 5 | 系统门槛 | **低于 1809 直接不支持**,停在欢迎页给明确提示,不做兜底 |
 | 6 | 提权设计 | **一个一次性提权 worker**,全程只弹一次 UAC |
 | 7 | 卸载程序 | **独立 exe**,卸载时询问"要不要一起卸载 Node" |
-| 8 | 仓库 | 安装器 `dsh-installer`;启动器**单独一个库**(见下);都 MIT |
+| 8 | 仓库 | 安装器 `Dafeiyu-Go-DeepSeek-Harness-Setup`;启动器**单独一个库**(见下);都 MIT |
 | 9 | 代码签名 | 暂不签,文档里写清楚 SmartScreen 怎么过 |
 | 10 | 测试环境 | 用户有虚拟机,可放开手测;(开发期用 `--dry-run` 在本机演练) |
 | 11 | 可选组件 | Node 之外(pnpm / Git / Python)用户勾了也是**便携版** |
@@ -76,7 +76,7 @@ dsh-installer                      ← 安装器(本项目)
 
 | 项 | 值 |
 |----|-----|
-| 启动器仓库 | `YunxiRamito/DSH-Launcher`(已写进 `WellKnown.LauncherRepository`) |
+| 启动器仓库 | `YunxiRamito/Dafeiyu-Go-DeepSeek-Harness-Click-To-Run`；旧仓库作为 1.4.9 回退 |
 | 首批版本 | `1.3.9`,zip 10.4MB,sha256 `6c8fb51c…41f0` |
 | 清单文件 | 启动器仓库根目录 `manifest.json`(已生成,待推送) |
 | 一键发版 | 启动器项目里的 `release.ps1`(编译+打包+算哈希+写清单) |

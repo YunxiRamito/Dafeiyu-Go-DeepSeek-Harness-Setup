@@ -539,7 +539,7 @@ internal static class Boot
         {
             DialogResult answer = MessageBox.Show(
                 message,
-                "DeepSeek Harness 安装程序",
+                "大肥鱼Go安装程序",
                 MessageBoxButtons.YesNo,
                 MessageBoxIcon.Warning);
 
@@ -1398,7 +1398,7 @@ internal static class Boot
                 "已取消,安装程序将退出。\r\n\r\n"
                 + "安装 .NET " + DotNetMajor + " 桌面运行时与 Windows App Runtime 1.8 后,"
                 + "重新运行本安装程序即可。",
-                "DeepSeek Harness 安装程序",
+                "大肥鱼Go安装程序",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Information);
 
@@ -1834,7 +1834,7 @@ internal static class Boot
     {
         try
         {
-            MessageBox.Show(message, "DeepSeek Harness 安装程序",
+            MessageBox.Show(message, "大肥鱼Go安装程序",
                 MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
         catch
@@ -1865,7 +1865,7 @@ internal sealed class ProgressWindow : Form
 
     public ProgressWindow()
     {
-        Text = "DeepSeek Harness 安装程序";
+        Text = "大肥鱼Go安装程序";
         FormBorderStyle = FormBorderStyle.FixedDialog;
         StartPosition = FormStartPosition.CenterScreen;
         MaximizeBox = false;

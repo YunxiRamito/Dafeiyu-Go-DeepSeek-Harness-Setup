@@ -5,8 +5,10 @@ namespace DshInstaller.Shared
     /// <summary>全局常量。装机脚本、检测、下载全部从这里取值,避免各写一份。</summary>
     public static class WellKnown
     {
-        public const string ProductName = "DeepSeek Harness";
-        public const string InstallerName = "DSH Installer";
+        public const string ProductName = "Dafeiyu-Go";
+        public const string LegacyProductName = "DeepSeek Harness";
+        public const string ProductNameChinese = "大肥鱼Go";
+        public const string InstallerName = "Dafeiyu-Go Setup";
 
         /// <summary>
         /// 安装器版本号。
@@ -32,7 +34,7 @@ namespace DshInstaller.Shared
             }
         }
 
-        public const string LauncherVersion = "1.3.9";
+        public const string LauncherVersion = "1.4.9";
 
         /// <summary>DSH 的 npm 包名。</summary>
         public const string DshPackage = "@deepseek-ai/dsh";
@@ -104,7 +106,10 @@ namespace DshInstaller.Shared
         /// 这样启动器发新版时安装器不用跟着重发。
         /// 留空 = 只用本地 payload\launcher.zip。
         /// </summary>
-        public const string LauncherRepository = "YunxiRamito/DSH-Launcher";
+        public const string LauncherRepository = "YunxiRamito/Dafeiyu-Go-DeepSeek-Harness-Click-To-Run";
+
+        /// <summary>过渡期旧仓库，仍作为清单和 Release 的回退候选。</summary>
+        public const string LegacyLauncherRepository = "YunxiRamito/DSH-Launcher";
 
         /// <summary>启动器清单所在分支。</summary>
         public const string LauncherBranch = "main";

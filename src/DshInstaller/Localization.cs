@@ -30,8 +30,8 @@ namespace DshInstaller
             new Dictionary<string, string[]>(StringComparer.Ordinal)
         {
             // 键 -> [中文, English]
-            { "app.name",        new[] { "DeepSeek Harness", "DeepSeek Harness" } },
-            { "app.subtitle",    new[] { "一键安装程序", "Installation Wizard" } },
+            { "app.name",        new[] { "大肥鱼Go", "Dafeiyu-Go" } },
+            { "app.subtitle",    new[] { "DeepSeek Harness 安装与启动管理", "Installer & Launcher for DeepSeek Harness" } },
             { "btn.back",        new[] { "上一步", "Back" } },
             { "btn.next",        new[] { "下一步", "Next" } },
             { "btn.start",       new[] { "开始安装", "Install" } },
@@ -41,8 +41,8 @@ namespace DshInstaller
             { "btn.retry",       new[] { "重试", "Retry" } },
             { "btn.cancel",      new[] { "取消", "Cancel" } },
 
-            { "welcome.slogan",  new[] { "欢迎使用 DeepSeek Harness", "Welcome to DeepSeek Harness" } },
-            { "welcome.desc",    new[] { "多模态大模型一键安装程序", "Multimodal AI Workbench — Installation Wizard" } },
+            { "welcome.slogan",  new[] { "欢迎使用大肥鱼Go", "Welcome to Dafeiyu-Go" } },
+            { "welcome.desc",    new[] { "面向 DeepSeek Harness 的安装与启动管理工具", "Installer and launcher for DeepSeek Harness" } },
             { "welcome.terms",   new[] { "继续即表示已阅读并同意下方声明", "By continuing, you acknowledge the statements below." } },
             { "welcome.note1",   new[] { "安装程序为在线安装，可能会产生流量费用", "This is an online installation and may consume network data." } },
             { "welcome.note2",   new[] { "组件全部使用便携版本安装到DSH目录，可一键卸载", "All components are installed portably into the DSH directory and can be removed in one step." } },
@@ -62,16 +62,16 @@ namespace DshInstaller
             { "components.desc",  new[] { "选择安装位置", "Choose the installation location." } },
 
             { "dsh.title",       new[] { "DSH 安装位置", "DSH Installation Directory" } },
-            { "dsh.desc",        new[] { "选择 DeepSeek Harness 应用程序的安装目录", "Select the installation directory for the DeepSeek Harness application." } },
+            { "dsh.desc",        new[] { "选择 DeepSeek Harness 本体的安装目录", "Select the installation directory for the DeepSeek Harness core." } },
 
             { "launcher.title",  new[] { "启动器安装位置", "Launcher Installation Directory" } },
-            { "launcher.desc",   new[] { "选择 DeepSeek Launcher 的安装目录", "Select the installation directory for DeepSeek Launcher." } },
+            { "launcher.desc",   new[] { "选择大肥鱼Go启动器的安装目录", "Select the installation directory for the Dafeiyu-Go launcher." } },
 
             { "confirm.title",   new[] { "确认安装", "Confirm Installation" } },
             { "confirm.desc",    new[] { "确认安装清单", "Review the installation summary below." } },
 
             { "progress.title",  new[] { "正在安装", "Installing" } },
-            { "progress.subtitle", new[] { "正在本机部署 DeepSeek Harness 以及相关组件，请不要关闭此窗口。", "DeepSeek Harness and its components are being installed. Please do not close this window." } },
+            { "progress.subtitle", new[] { "正在本机部署大肥鱼Go与 DeepSeek Harness 相关组件，请不要关闭此窗口。", "Dafeiyu-Go and its DeepSeek Harness components are being installed. Please do not close this window." } },
             { "progress.showlog", new[] { "查看日志", "View log" } },
             { "log.exec", new[] { "执行:", "Run:" } },
             { "progress.preparing", new[] { "准备中…", "Preparing…" } },
@@ -97,11 +97,11 @@ namespace DshInstaller
             { "rollback.failed", new[] { "回滚过程中出现问题：", "A problem occurred during rollback: " } },
             { "done.title",      new[] { "安装完成", "Installation Complete" } },
             { "done.partial.title", new[] { "安装未完全完成", "Installation partially complete" } },
-            { "done.partial.desc", new[] { "主要组件已就绪，现在即可使用 DeepSeek Harness。下列可选组件未能安装，不影响使用。", "The main components are ready and DeepSeek Harness can be used now. The optional components below were not installed; this does not affect normal use." } },
+            { "done.partial.desc", new[] { "主要组件已就绪，现在即可使用大肥鱼Go。下列可选组件未能安装，不影响使用。", "The main components are ready and Dafeiyu-Go can be used now. The optional components below were not installed; this does not affect normal use." } },
             { "done.partial.label", new[] { "未安装（可选）", "Not installed (optional)" } },
 
             { "done.skippedcount", new[] { " · 跳过 ", " · skipped " } },
-            { "uninstall.title", new[] { "卸载 DeepSeek Harness", "Uninstall DeepSeek Harness" } },
+            { "uninstall.title", new[] { "卸载大肥鱼Go", "Uninstall Dafeiyu-Go" } },
             { "uninstall.items.title", new[] { "选择要删除的内容", "Choose what to remove" } },
             { "uninstall.notOurs", new[] { "非本安装程序安装，不提供卸载。", "Not installed by this setup; it will not be removed." } },
             { "uninstall.noRecord", new[] { "未找到本程序的安装记录，因此下列各项均已被禁用。可以直接删除对应目录，或保留它们。", "No installation record from this setup was found, so all items below are disabled. You may delete the directories manually or keep them." } },
@@ -112,7 +112,7 @@ namespace DshInstaller
             { "uninstall.item.shortcut.desc", new[] { "桌面与开始菜单里由本程序创建的快捷方式。", "Shortcuts created by this setup on the desktop and in the Start menu." } },
             { "uninstall.item.autostart.desc", new[] { "开机自启的计划任务。", "The scheduled task that starts the program at sign-in." } },
             { "uninstall.items.desc", new[] { "以下内容将被移除；可以单独决定是否清理 PATH 与用户数据。", "The items below will be removed. You can decide separately whether to clean PATH and user data." } },
-            { "uninstall.confirm.question", new[] { "确定要卸载 DeepSeek Harness 吗？", "Are you sure you want to uninstall DeepSeek Harness?" } },
+            { "uninstall.confirm.question", new[] { "确定要卸载大肥鱼Go吗？", "Are you sure you want to uninstall Dafeiyu-Go?" } },
             { "uninstall.confirm.desc", new[] { "请确认。下一步可以选择具体删除哪些内容。", "Please confirm. You can choose exactly what to remove in the next step." } },
             { "uninstall.confirm.detail", new[] { "卸载会移除 DSH 本体、启动器、便携组件、快捷方式与开机自启。已经开始的会话会中断。", "Uninstalling removes the DSH core, the launcher, portable components, shortcuts and the startup entry. Running sessions will be interrupted." } },
             { "uninstall.confirm.keep", new[] { "予以保留的内容", "What is kept" } },
@@ -143,7 +143,7 @@ namespace DshInstaller
             { "failed.nothing", new[] { "没有记录到具体原因，详情见日志文件。", "No specific reason was recorded. See the log file for details." } },
             { "failed.norollback", new[] { "没有需要撤销的改动。", "There were no changes to undo." } },
             { "failed.link.launcher", new[] { "启动器", "Launcher" } },
-            { "uninstall.done.desc", new[] { "DeepSeek Harness 已从本机移除。", "DeepSeek Harness has been removed from this computer." } },
+            { "uninstall.done.desc", new[] { "大肥鱼Go已从本机移除。", "Dafeiyu-Go has been removed from this computer." } },
             { "uninstall.leftover", new[] { "部分文件未能删除，通常因文件被占用，重启后可再次尝试。", "Some files could not be deleted, usually because they are in use. Try again after a restart." } },
             { "btn.uninstall", new[] { "卸载", "Uninstall" } },
             { "done.failedcount", new[] { " · 失败 ", " · failed " } },

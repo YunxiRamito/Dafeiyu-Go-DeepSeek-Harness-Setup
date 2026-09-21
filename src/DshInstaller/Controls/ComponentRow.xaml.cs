@@ -29,6 +29,10 @@ namespace DshInstaller.Controls
         public ComponentRow()
         {
             InitializeComponent();
+            ActualThemeChanged += delegate
+            {
+                ApplyStateVisuals();
+            };
         }
 
         /// <summary>紧凑模式:缩小上下留白,列表长的时候能多塞几行。</summary>
@@ -93,59 +97,74 @@ namespace DshInstaller.Controls
         /// </summary>
         public void SetStatusText(string text)
         {
+            _stateText = text;
             StateText.Text = text ?? string.Empty;
         }
 
         public void SetState(RowState state, string text, string version = null)
         {
+            _state = state;
+            _stateText = text;
+            _stateVersion = version;
+            ApplyStateVisuals();
+        }
+
+        private RowState _state = RowState.Pending;
+        private string _stateText;
+        private string _stateVersion;
+
+        private void ApplyStateVisuals()
+        {
             Busy.IsActive = false;
             Busy.Visibility = Visibility.Collapsed;
             StateIcon.Visibility = Visibility.Visible;
 
-            string suffix = string.IsNullOrEmpty(version) ? string.Empty : "  " + ShortVersion(version);
+            string suffix = string.IsNullOrEmpty(_stateVersion)
+                ? string.Empty
+                : "  " + ShortVersion(_stateVersion);
 
-            switch (state)
+            switch (_state)
             {
                 case RowState.Busy:
                     StateIcon.Visibility = Visibility.Collapsed;
                     Busy.Visibility = Visibility.Visible;
                     Busy.IsActive = true;
-                    StateText.Text = text ?? string.Empty;
+                    StateText.Text = _stateText ?? string.Empty;
                     StateText.Foreground = Brush("TertiaryTextBrush", Windows.UI.Color.FromArgb(255, 138, 144, 153));
                     break;
 
                 case RowState.Ready:
                     StateIcon.Glyph = "\uE73E";   // 对勾
                     StateIcon.Foreground = Brush("SuccessBrush", Windows.UI.Color.FromArgb(255, 46, 158, 91));
-                    StateText.Text = (text ?? Localization.T("state.ready")) + suffix;
+                    StateText.Text = (_stateText ?? Localization.T("state.ready")) + suffix;
                     StateText.Foreground = Brush("SecondaryTextBrush", Windows.UI.Color.FromArgb(255, 92, 99, 110));
                     break;
 
                 case RowState.Missing:
                     StateIcon.Glyph = "\uE7BA";   // 警告
                     StateIcon.Foreground = Brush("WarningBrush", Windows.UI.Color.FromArgb(255, 217, 138, 0));
-                    StateText.Text = text ?? Localization.T("state.missing");
+                    StateText.Text = _stateText ?? Localization.T("state.missing");
                     StateText.Foreground = Brush("WarningBrush", Windows.UI.Color.FromArgb(255, 217, 138, 0));
                     break;
 
                 case RowState.Optional:
                     StateIcon.Glyph = "\uE738";   // 圆圈
                     StateIcon.Foreground = Brush("TertiaryTextBrush", Windows.UI.Color.FromArgb(255, 138, 144, 153));
-                    StateText.Text = text ?? Localization.T("state.optional");
+                    StateText.Text = _stateText ?? Localization.T("state.optional");
                     StateText.Foreground = Brush("TertiaryTextBrush", Windows.UI.Color.FromArgb(255, 138, 144, 153));
                     break;
 
                 case RowState.Error:
                     StateIcon.Glyph = "\uEA39";   // 叉
                     StateIcon.Foreground = Brush("DangerBrush", Windows.UI.Color.FromArgb(255, 214, 69, 69));
-                    StateText.Text = text ?? Localization.T("state.error");
+                    StateText.Text = _stateText ?? Localization.T("state.error");
                     StateText.Foreground = Brush("DangerBrush", Windows.UI.Color.FromArgb(255, 214, 69, 69));
                     break;
 
                 default:
                     StateIcon.Glyph = "\uE738";
                     StateIcon.Foreground = Brush("TertiaryTextBrush", Windows.UI.Color.FromArgb(255, 138, 144, 153));
-                    StateText.Text = text ?? string.Empty;
+                    StateText.Text = _stateText ?? string.Empty;
                     StateText.Foreground = Brush("TertiaryTextBrush", Windows.UI.Color.FromArgb(255, 138, 144, 153));
                     break;
             }

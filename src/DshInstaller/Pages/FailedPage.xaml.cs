@@ -24,6 +24,13 @@ namespace DshInstaller.Pages
             InitializeComponent();
             ApplyText();
             Loaded += OnLoaded;
+            ActualThemeChanged += delegate
+            {
+                if (IsLoaded)
+                {
+                    OnLoaded(this, new RoutedEventArgs());
+                }
+            };
         }
 
         public bool CanGoNext

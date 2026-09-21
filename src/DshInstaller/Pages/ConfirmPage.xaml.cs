@@ -218,8 +218,12 @@ namespace DshInstaller.Pages
             {
                 Text = label,
                 FontSize = 12.5,
-                Foreground = Brush("TertiaryTextBrush", Windows.UI.Color.FromArgb(255, 138, 144, 153)),
             };
+            Theme.Bind(
+                labelText,
+                TextBlock.ForegroundProperty,
+                "TertiaryTextBrush",
+                Windows.UI.Color.FromArgb(255, 138, 144, 153));
             Grid.SetColumn(labelText, 0);
 
             TextBlock valueText = new TextBlock
@@ -227,19 +231,28 @@ namespace DshInstaller.Pages
                 Text = value ?? string.Empty,
                 FontSize = 12.5,
                 TextWrapping = TextWrapping.Wrap,
-                Foreground = Brush("PrimaryTextBrush", Windows.UI.Color.FromArgb(255, 26, 29, 35)),
             };
+            Theme.Bind(
+                valueText,
+                TextBlock.ForegroundProperty,
+                "PrimaryTextBrush",
+                Windows.UI.Color.FromArgb(255, 26, 29, 35));
             Grid.SetColumn(valueText, 1);
 
             row.Children.Add(labelText);
             row.Children.Add(valueText);
 
             RowsHost.Children.Add(row);
-            RowsHost.Children.Add(new Border
+            Border divider = new Border
             {
                 Height = 1,
-                Background = Brush("DividerBrush", Windows.UI.Color.FromArgb(18, 0, 0, 0)),
-            });
+            };
+            Theme.Bind(
+                divider,
+                Border.BackgroundProperty,
+                "DividerBrush",
+                Windows.UI.Color.FromArgb(18, 0, 0, 0));
+            RowsHost.Children.Add(divider);
         }
 
         private static Brush Brush(string key, Windows.UI.Color fallback)

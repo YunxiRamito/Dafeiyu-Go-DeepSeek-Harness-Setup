@@ -14,6 +14,13 @@ namespace DshInstaller.Pages
             InitializeComponent();
             ApplyText();
             Loaded += OnLoaded;
+            ActualThemeChanged += delegate
+            {
+                if (IsLoaded)
+                {
+                    OnLoaded(this, new RoutedEventArgs());
+                }
+            };
         }
 
         public bool CanGoNext
@@ -92,11 +99,11 @@ namespace DshInstaller.Pages
             {
                 TitleText.Text = Localization.T("done.title");
                 SubtitleText.Text = Localization.IsChinese
-                    ? "DeepSeek Harness 现已可使用：请查看任务栏图标。"
-                    : "DeepSeek Harness is now available. Check your system tray.";
+                    ? "大肥鱼Go现已可使用：请查看任务栏图标。"
+                    : "Dafeiyu-Go is now available. Check your system tray.";
             }
 
-            LaunchBox.Content = Localization.IsChinese ? "现在启动 DeepSeek Harness" : "Launch DeepSeek Harness now";
+            LaunchBox.Content = Localization.IsChinese ? "现在启动大肥鱼Go" : "Launch Dafeiyu-Go now";
             FootnoteText.Text = Localization.IsChinese ? "一键安装程序与启动器由 DeepSeek V4.1 Flash 与 雨沫云汐 制作。" : "The installer and launcher are made by DeepSeek V4.1 Flash and Yumo Yunxi.";
         }
 
@@ -161,7 +168,7 @@ namespace DshInstaller.Pages
                 PartialBox.Visibility = Visibility.Visible;
                 for (int i = 0; i < optionalFailed.Count; i++)
                 {
-                    PartialHost.Children.Add(new TextBlock
+                    TextBlock partialLine = new TextBlock
                     {
                         Text = "· " + optionalFailed[i].Title
                             + (string.IsNullOrWhiteSpace(optionalFailed[i].Message)
@@ -169,9 +176,13 @@ namespace DshInstaller.Pages
                                 : "  (" + FirstLine(optionalFailed[i].Message) + ")"),
                         FontSize = 11.5,
                         TextWrapping = TextWrapping.Wrap,
-                        Foreground = Theme.Brush("TertiaryTextBrush",
-                            Windows.UI.Color.FromArgb(255, 138, 144, 153)),
-                    });
+                    };
+                    Theme.Bind(
+                        partialLine,
+                        TextBlock.ForegroundProperty,
+                        "TertiaryTextBrush",
+                        Windows.UI.Color.FromArgb(255, 138, 144, 153));
+                    PartialHost.Children.Add(partialLine);
                 }
             }
 
@@ -252,31 +263,46 @@ namespace DshInstaller.Pages
                 Spacing = 10,
             };
 
-            row.Children.Add(new FontIcon
+            FontIcon icon = new FontIcon
             {
                 Glyph = glyph,
                 FontSize = 13,
                 VerticalAlignment = VerticalAlignment.Center,
-                Foreground = Brush("AccentBrush", Windows.UI.Color.FromArgb(255, 77, 107, 254)),
-            });
+            };
+            Theme.Bind(
+                icon,
+                FontIcon.ForegroundProperty,
+                "AccentBrush",
+                Windows.UI.Color.FromArgb(255, 77, 107, 254));
+            row.Children.Add(icon);
 
-            row.Children.Add(new TextBlock
+            TextBlock labelText = new TextBlock
             {
                 Text = label,
                 FontSize = 12.5,
                 Width = 96,
                 VerticalAlignment = VerticalAlignment.Center,
-                Foreground = Brush("SecondaryTextBrush", Windows.UI.Color.FromArgb(255, 92, 99, 110)),
-            });
+            };
+            Theme.Bind(
+                labelText,
+                TextBlock.ForegroundProperty,
+                "SecondaryTextBrush",
+                Windows.UI.Color.FromArgb(255, 92, 99, 110));
+            row.Children.Add(labelText);
 
-            row.Children.Add(new TextBlock
+            TextBlock valueText = new TextBlock
             {
                 Text = value ?? string.Empty,
                 FontSize = 12,
                 TextWrapping = TextWrapping.Wrap,
                 VerticalAlignment = VerticalAlignment.Center,
-                Foreground = Brush("PrimaryTextBrush", Windows.UI.Color.FromArgb(255, 26, 29, 35)),
-            });
+            };
+            Theme.Bind(
+                valueText,
+                TextBlock.ForegroundProperty,
+                "PrimaryTextBrush",
+                Windows.UI.Color.FromArgb(255, 26, 29, 35));
+            row.Children.Add(valueText);
 
             SummaryHost.Children.Add(row);
         }

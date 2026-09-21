@@ -1,13 +1,16 @@
 using System;
 using System.Collections.Generic;
 using Microsoft.UI;
+using Microsoft.UI.Composition;
 using Microsoft.UI.Composition.SystemBackdrops;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Animation;
+using Microsoft.UI.Xaml.Shapes;
 using Windows.Graphics;
+using WinRT;
 using WinRT.Interop;
 
 namespace DshInstaller
@@ -97,7 +100,19 @@ namespace DshInstaller
         private Grid _captionRow;
         private Button _minimizeButton;
         private Button _closeButton;
+        private FontIcon _minimizeIcon;
+        private FontIcon _closeIcon;
         private TextBlock _titleText;
+        private Border _brandBadge;
+        private Path _brandMark;
+        private FontIcon _languageIcon;
+        private Border _footerBorder;
+        private Grid _shellRoot;
+
+        private MicaController _micaController;
+        private DesktopAcrylicController _acrylicController;
+        private SystemBackdropConfiguration _backdropConfiguration;
+        private bool _backdropClosed;
 
         private WizardPage _current = WizardPage.Welcome;
         private bool _navigating;
@@ -192,25 +207,27 @@ namespace DshInstaller
 
         private void BuildUi()
         {
-            Grid root = new Grid
+            _shellRoot = new Grid
             {
                 Background = Theme.Brush("ShellBackgroundBrush", Windows.UI.Color.FromArgb(255, 244, 246, 250)),
+                RequestedTheme = ElementTheme.Default,
             };
-            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
-            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            _shellRoot.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            _shellRoot.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+            _shellRoot.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
-            root.Children.Add(BuildTitleBar());
+            _shellRoot.Children.Add(BuildTitleBar());
 
             _contentFrame = new Frame();
             Grid.SetRow(_contentFrame, 1);
-            root.Children.Add(_contentFrame);
+            _shellRoot.Children.Add(_contentFrame);
 
             Border footer = BuildFooter();
             Grid.SetRow(footer, 2);
-            root.Children.Add(footer);
+            _shellRoot.Children.Add(footer);
 
-            Content = root;
+            _shellRoot.ActualThemeChanged += OnShellActualThemeChanged;
+            Content = _shellRoot;
         }
 
         /// <summary>
@@ -243,19 +260,23 @@ namespace DshInstaller
             brand.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             brand.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
-            brand.Children.Add(new Border
+            _brandMark = Controls.DshBrand.Mark(
+                14,
+                Theme.Brush("OnAccentBrush", Windows.UI.Color.FromArgb(255, 255, 255, 255)));
+            _brandBadge = new Border
             {
                 Width = TitleBarContentHeight,
                 Height = TitleBarContentHeight,
                 CornerRadius = new CornerRadius(6),
                 VerticalAlignment = VerticalAlignment.Center,
                 Background = Theme.Brush("AccentBrush", Windows.UI.Color.FromArgb(255, 17, 17, 18)),
-                Child = Controls.DshBrand.Mark(14, new SolidColorBrush(Colors.White)),
-            });
+                Child = _brandMark,
+            };
+            brand.Children.Add(_brandBadge);
 
             _titleText = new TextBlock
             {
-                Text = Localization.IsChinese ? "DeepSeek Harness 安装程序" : "DeepSeek Harness Setup",
+                Text = Localization.IsChinese ? "大肥鱼Go安装程序" : "Dafeiyu-Go Setup",
                 FontSize = 12,
                 // 不要设 LineHeight / BlockLineHeight:那个"块行高"会把多余空间塞在基线下方,
                 // 把字形往上顶,结果是文字视觉中心和左边的徽章对不齐(实测就是这样)。
@@ -371,9 +392,11 @@ namespace DshInstaller
             };
 
             _minimizeButton = CreateCaptionButton("\uE921", false);
+            _minimizeIcon = _minimizeButton.Content as FontIcon;
             _minimizeButton.Click += OnMinimizeClick;
 
             _closeButton = CreateCaptionButton("\uE8BB", true);
+            _closeIcon = _closeButton.Content as FontIcon;
             _closeButton.Click += OnCloseClick;
 
             // 拦住"安装中途被叉掉"。叉号 / Alt+F4 / 任务栏关闭都会走到 AppWindow.Closing。
@@ -449,16 +472,12 @@ namespace DshInstaller
         /// <summary>一个自绘的窗口按钮:宽 46、高 32,和系统那套手感一致。</summary>
         private Button CreateCaptionButton(string glyph, bool isClose)
         {
-            // 字面色值,不跟主题走(否则会被 Button 模板的 Foreground 盖成浅色)
-            SolidColorBrush idleIcon = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 24, 24, 27));
-
             FontIcon icon = new FontIcon
             {
                 Glyph = glyph,
                 FontSize = 10,
                 HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center,
-                Foreground = idleIcon,
             };
 
             Button button = new Button
@@ -480,17 +499,6 @@ namespace DshInstaller
             button.Resources["ButtonBorderBrushPressed"] = clearBrush;
             button.Resources["ButtonBorderBrushDisabled"] = clearBrush;
 
-            // 悬停/按下的底色:不透明实色,浅色标题栏上才看得出来。
-            // 图标颜色全程不变 —— 之前悬停时把关闭图标改成白色,一旦 PointerExited 没收到
-            // 就永远白着(实测就是这个现象)。
-            SolidColorBrush idle = new SolidColorBrush(Colors.Transparent);
-            SolidColorBrush hover = isClose
-                ? new SolidColorBrush(Windows.UI.Color.FromArgb(255, 232, 17, 35))
-                : new SolidColorBrush(Windows.UI.Color.FromArgb(255, 222, 222, 225));
-            SolidColorBrush pressed = isClose
-                ? new SolidColorBrush(Windows.UI.Color.FromArgb(255, 190, 12, 28))
-                : new SolidColorBrush(Windows.UI.Color.FromArgb(255, 196, 196, 200));
-
             // 关键:底色的"权威来源"是下面这几个资源键,不是 button.Background。
             //
             // Button 模板里有 PointerOver / Pressed 视觉状态,它们会用
@@ -500,20 +508,55 @@ namespace DshInstaller
             // 表现就是"反馈完全没变"。
             // 资源查找是从元素往上找的,把键挂到按钮自己的 Resources 上就能生效。
             // 别去动 ButtonForeground —— 那会把图标前景一起改掉(之前踩过,图标变白)。
-            button.Resources["ButtonBackground"] = idle;
-            button.Resources["ButtonBackgroundPointerOver"] = hover;
-            button.Resources["ButtonBackgroundPressed"] = pressed;
-            button.Resources["ButtonBackgroundDisabled"] = idle;
+            bool dark = _shellRoot != null
+                && _shellRoot.ActualTheme == ElementTheme.Dark;
+            ApplyCaptionButtonBrushes(button, isClose, dark);
 
             // 兜底:万一某个版本的模板不走状态机
-            button.PointerEntered += delegate { button.Background = hover; };
-            button.PointerExited += delegate { button.Background = idle; };
-            button.PointerCanceled += delegate { button.Background = idle; };
-            button.PointerCaptureLost += delegate { button.Background = idle; };
-            button.PointerPressed += delegate { button.Background = pressed; };
-            button.PointerReleased += delegate { button.Background = hover; };
+            button.PointerEntered += delegate { button.Background = CaptionBrush(isClose, false); };
+            button.PointerExited += delegate { button.Background = CaptionBrush(isClose, false, true); };
+            button.PointerCanceled += delegate { button.Background = CaptionBrush(isClose, false, true); };
+            button.PointerCaptureLost += delegate { button.Background = CaptionBrush(isClose, false, true); };
+            button.PointerPressed += delegate { button.Background = CaptionBrush(isClose, true); };
+            button.PointerReleased += delegate { button.Background = CaptionBrush(isClose, false); };
 
             return button;
+        }
+
+        private SolidColorBrush CaptionBrush(
+            bool isClose,
+            bool pressed,
+            bool idle = false)
+        {
+            if (idle)
+            {
+                return new SolidColorBrush(Colors.Transparent);
+            }
+
+            if (isClose)
+            {
+                return new SolidColorBrush(
+                    pressed
+                        ? Windows.UI.Color.FromArgb(255, 190, 12, 28)
+                        : Windows.UI.Color.FromArgb(255, 232, 17, 35));
+            }
+
+            bool dark = _shellRoot != null
+                && _shellRoot.ActualTheme == ElementTheme.Dark;
+            if (dark)
+            {
+                return new SolidColorBrush(
+                    Windows.UI.Color.FromArgb(
+                        pressed ? (byte)48 : (byte)32,
+                        255,
+                        255,
+                        255));
+            }
+
+            return new SolidColorBrush(
+                pressed
+                    ? Windows.UI.Color.FromArgb(255, 196, 196, 200)
+                    : Windows.UI.Color.FromArgb(255, 222, 222, 225));
         }
         private void EndDrag()
         {
@@ -609,13 +652,14 @@ namespace DshInstaller
                 Spacing = 6,
                 VerticalAlignment = VerticalAlignment.Center,
             };
-            languageContent.Children.Add(new FontIcon
+            _languageIcon = new FontIcon
             {
                 Glyph = "\uE774",
                 FontSize = 13,
                 VerticalAlignment = VerticalAlignment.Center,
                 Foreground = Theme.Brush("SecondaryTextBrush", Windows.UI.Color.FromArgb(255, 92, 99, 110)),
-            });
+            };
+            languageContent.Children.Add(_languageIcon);
             languageContent.Children.Add(_languageLabel);
 
             _languageButton = new Button
@@ -692,12 +736,13 @@ namespace DshInstaller
             Grid.SetColumn(_actionButton, 3);
             grid.Children.Add(_actionButton);
 
-            return new Border
+            _footerBorder = new Border
             {
                 BorderThickness = new Thickness(0, 1, 0, 0),
                 BorderBrush = Theme.Brush("DividerBrush", Windows.UI.Color.FromArgb(18, 0, 0, 0)),
                 Child = grid,
             };
+            return _footerBorder;
         }
 
         /// <summary>
@@ -709,7 +754,7 @@ namespace DshInstaller
 
         private void ConfigureWindow()
         {
-            Title = Localization.IsChinese ? "DeepSeek Harness 安装程序" : "DeepSeek Harness Setup";
+            Title = Localization.IsChinese ? "大肥鱼Go安装程序" : "Dafeiyu-Go Setup";
 
             IntPtr handle = WindowNative.GetWindowHandle(this);
             WindowId windowId = Win32Interop.GetWindowIdFromWindow(handle);
@@ -741,19 +786,288 @@ namespace DshInstaller
             // 样式里把框加回来了(为了 DWM 的投影),所以最大化位要再摘一次
             NativeMethods.RemoveMaximizeButton(handle);
 
-            try
-            {
-                SystemBackdrop = new DesktopAcrylicBackdrop();
-            }
-            catch
-            {
-            }
+            ApplyBackdrop();
+            ApplyCaptionButtonTheme();
+            ApplyProgrammaticTheme();
 
             ApplyAdaptiveSize();
 
             // 窗口真的显示出来以后再用实际 DPI 校正一次,
             // 因为这时才拿得到窗口所在显示器的 DPI(多屏 + 不同缩放时很关键)
             Activated += OnFirstActivated;
+            Activated += OnWindowActivated;
+            Closed += OnWindowClosed;
+        }
+
+        private void ApplyBackdrop()
+        {
+            if (_backdropClosed || _shellRoot == null)
+            {
+                return;
+            }
+
+            DisposeBackdropControllers();
+            SystemBackdrop = null;
+
+            try
+            {
+                ICompositionSupportsSystemBackdrop target =
+                    this.As<ICompositionSupportsSystemBackdrop>();
+                _backdropConfiguration ??= new SystemBackdropConfiguration
+                {
+                    IsInputActive = true
+                };
+                _backdropConfiguration.Theme = ResolveBackdropTheme(_shellRoot.ActualTheme);
+
+                if (MicaController.IsSupported())
+                {
+                    _micaController = new MicaController
+                    {
+                        Kind = MicaKind.BaseAlt
+                    };
+                    if (_micaController.AddSystemBackdropTarget(target))
+                    {
+                        _micaController.SetSystemBackdropConfiguration(_backdropConfiguration);
+                        SetShellBackdropTransparent();
+                        WriteLog("[theme] Mica Alt 已启用，跟随系统主题");
+                        return;
+                    }
+
+                    DisposeBackdropControllers();
+                }
+
+                if (DesktopAcrylicController.IsSupported())
+                {
+                    _acrylicController = new DesktopAcrylicController
+                    {
+                        Kind = DesktopAcrylicKind.Thin
+                    };
+                    if (_acrylicController.AddSystemBackdropTarget(target))
+                    {
+                        _acrylicController.SetSystemBackdropConfiguration(_backdropConfiguration);
+                        SetShellBackdropTransparent();
+                        WriteLog("[theme] Mica Alt 不受支持，已回退 Acrylic");
+                        return;
+                    }
+
+                    DisposeBackdropControllers();
+                }
+            }
+            catch (Exception exception)
+            {
+                DisposeBackdropControllers();
+                WriteLog("[theme] 系统材质启用失败: " + exception.Message);
+            }
+
+            ApplyShellFallbackBackground();
+        }
+
+        private void OnShellActualThemeChanged(
+            FrameworkElement sender,
+            object args)
+        {
+            if (_backdropConfiguration != null)
+            {
+                _backdropConfiguration.Theme = ResolveBackdropTheme(sender.ActualTheme);
+            }
+
+            ApplyCaptionButtonTheme();
+            ApplyProgrammaticTheme();
+
+            if (_micaController == null && _acrylicController == null)
+            {
+                ApplyShellFallbackBackground();
+            }
+        }
+
+        private void OnWindowActivated(
+            object sender,
+            WindowActivatedEventArgs arguments)
+        {
+            if (_backdropConfiguration != null)
+            {
+                _backdropConfiguration.IsInputActive =
+                    arguments.WindowActivationState
+                    != WindowActivationState.Deactivated;
+            }
+        }
+
+        private void OnWindowClosed(object sender, WindowEventArgs args)
+        {
+            _backdropClosed = true;
+            DisposeBackdropControllers();
+        }
+
+        private void DisposeBackdropControllers()
+        {
+            if (_micaController != null)
+            {
+                try
+                {
+                    _micaController.RemoveAllSystemBackdropTargets();
+                    _micaController.Dispose();
+                }
+                catch
+                {
+                }
+
+                _micaController = null;
+            }
+
+            if (_acrylicController != null)
+            {
+                try
+                {
+                    _acrylicController.RemoveAllSystemBackdropTargets();
+                    _acrylicController.Dispose();
+                }
+                catch
+                {
+                }
+
+                _acrylicController = null;
+            }
+        }
+
+        private void SetShellBackdropTransparent()
+        {
+            if (_shellRoot != null)
+            {
+                _shellRoot.Background = new SolidColorBrush(Colors.Transparent);
+            }
+        }
+
+        private void ApplyShellFallbackBackground()
+        {
+            if (_shellRoot != null)
+            {
+                _shellRoot.Background = Theme.Brush(
+                    "ShellBackgroundBrush",
+                    Windows.UI.Color.FromArgb(255, 244, 246, 250));
+            }
+        }
+
+        private static SystemBackdropTheme ResolveBackdropTheme(
+            ElementTheme theme)
+        {
+            if (theme == ElementTheme.Light)
+            {
+                return SystemBackdropTheme.Light;
+            }
+
+            if (theme == ElementTheme.Dark)
+            {
+                return SystemBackdropTheme.Dark;
+            }
+
+            return SystemBackdropTheme.Default;
+        }
+
+        private void ApplyCaptionButtonTheme()
+        {
+            bool dark = _shellRoot != null
+                && _shellRoot.ActualTheme == ElementTheme.Dark;
+            SolidColorBrush iconBrush = new SolidColorBrush(
+                dark
+                    ? Windows.UI.Color.FromArgb(255, 245, 245, 247)
+                    : Windows.UI.Color.FromArgb(255, 24, 24, 27));
+
+            if (_minimizeIcon != null)
+            {
+                _minimizeIcon.Foreground = iconBrush;
+            }
+
+            if (_closeIcon != null)
+            {
+                _closeIcon.Foreground = iconBrush;
+            }
+
+            ApplyCaptionButtonBrushes(_minimizeButton, false, dark);
+            ApplyCaptionButtonBrushes(_closeButton, true, dark);
+        }
+
+        private void ApplyProgrammaticTheme()
+        {
+            Brush secondary = Theme.Brush(
+                "SecondaryTextBrush",
+                Windows.UI.Color.FromArgb(255, 92, 99, 110));
+            Brush tertiary = Theme.Brush(
+                "TertiaryTextBrush",
+                Windows.UI.Color.FromArgb(255, 138, 144, 153));
+            Brush accent = Theme.Brush(
+                "AccentBrush",
+                Windows.UI.Color.FromArgb(255, 17, 17, 18));
+            Brush onAccent = Theme.Brush(
+                "OnAccentBrush",
+                Windows.UI.Color.FromArgb(255, 255, 255, 255));
+            Brush divider = Theme.Brush(
+                "DividerBrush",
+                Windows.UI.Color.FromArgb(18, 0, 0, 0));
+
+            if (_titleText != null)
+            {
+                _titleText.Foreground = secondary;
+            }
+
+            if (_brandBadge != null)
+            {
+                _brandBadge.Background = accent;
+            }
+
+            if (_brandMark != null)
+            {
+                _brandMark.Fill = onAccent;
+            }
+
+            if (_languageLabel != null)
+            {
+                _languageLabel.Foreground = secondary;
+            }
+
+            if (_languageIcon != null)
+            {
+                _languageIcon.Foreground = secondary;
+            }
+
+            if (_footerHint != null)
+            {
+                _footerHint.Foreground = tertiary;
+            }
+
+            if (_footerBorder != null)
+            {
+                _footerBorder.BorderBrush = divider;
+            }
+        }
+
+        private static void ApplyCaptionButtonBrushes(
+            Button button,
+            bool isClose,
+            bool dark)
+        {
+            if (button == null)
+            {
+                return;
+            }
+
+            SolidColorBrush idle = new SolidColorBrush(Colors.Transparent);
+            SolidColorBrush hover = isClose
+                ? new SolidColorBrush(Windows.UI.Color.FromArgb(255, 232, 17, 35))
+                : new SolidColorBrush(
+                    dark
+                        ? Windows.UI.Color.FromArgb(32, 255, 255, 255)
+                        : Windows.UI.Color.FromArgb(255, 222, 222, 225));
+            SolidColorBrush pressed = isClose
+                ? new SolidColorBrush(Windows.UI.Color.FromArgb(255, 190, 12, 28))
+                : new SolidColorBrush(
+                    dark
+                        ? Windows.UI.Color.FromArgb(48, 255, 255, 255)
+                        : Windows.UI.Color.FromArgb(255, 196, 196, 200));
+
+            button.Resources["ButtonBackground"] = idle;
+            button.Resources["ButtonBackgroundPointerOver"] = hover;
+            button.Resources["ButtonBackgroundPressed"] = pressed;
+            button.Resources["ButtonBackgroundDisabled"] = idle;
         }
 
         private bool _sizeCorrected;
@@ -1113,8 +1427,8 @@ namespace DshInstaller
             if (_titleText != null)
             {
                 _titleText.Text = Localization.IsChinese
-                    ? "DeepSeek Harness 安装程序"
-                    : "DeepSeek Harness Installer";
+                    ? "大肥鱼Go安装程序"
+                    : "Dafeiyu-Go Setup";
             }
 
 
@@ -1131,7 +1445,7 @@ namespace DshInstaller
             }
 
             // 窗口标题也跟着语言走
-            Title = Localization.IsChinese ? "DeepSeek Harness 安装程序" : "DeepSeek Harness Setup";
+            Title = Localization.IsChinese ? "大肥鱼Go安装程序" : "Dafeiyu-Go Setup";
 
             ApplyChrome();
         }

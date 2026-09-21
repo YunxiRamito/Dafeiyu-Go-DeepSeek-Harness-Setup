@@ -1,4 +1,4 @@
-# 交接:DSH Installer + DSH Launcher
+# 交接:大肥鱼Go / Dafeiyu-Go
 
 > 给下一个接手的人(或下一个 AI)。读完这份 + 两个仓库各自的 `STATUS.md` / `RELEASE.md`
 > 就能上手。**接手第一件事:把「待验证」那节跑完**,里面两条路是本轮唯一没实测过的。
@@ -11,15 +11,17 @@
 
 | 项目 | 路径 | 干什么 |
 |------|------|--------|
-| **DSH Installer** | `G:\DeepSeek DSH\DSH Works\DSH Installer` | 装机程序。检测环境 → 补运行库 → 装 DSH 本体 → 部署启动器 → 建快捷方式 → 可卸载 |
-| **DSH Launcher** | `G:\DeepSeek DSH\DSH Works\Project\DeepSeek Starter` | 托盘启动器(WinUI3),负责跑 DSH 本体、自更新、开机静默启动 |
+| **Dafeiyu-Go Setup** | `G:\DeepSeek DSH\DSH Works\DSH Installer` | 装机程序。检测环境 → 补运行库 → 装 DSH 本体 → 部署启动器 → 建快捷方式 → 可卸载 |
+| **Dafeiyu-Go Launcher** | `G:\DeepSeek DSH\DSH Works\Project\DeepSeek Starter` | 托盘启动器(WinUI3),负责跑 DSH 本体、自更新、开机静默启动 |
 
 **关系**:安装器**不把启动器打进包里**(那样每发一次启动器就得重发安装器)。
 装的时候去读启动器仓库的 `manifest.json` 拿版本号和校验值,再去下载。
 
 两个仓库:
-- https://github.com/YunxiRamito/dsh-installer
-- https://github.com/YunxiRamito/DSH-Launcher
+- https://github.com/YunxiRamito/Dafeiyu-Go-DeepSeek-Harness-Setup
+- https://github.com/YunxiRamito/Dafeiyu-Go-DeepSeek-Harness-Click-To-Run
+
+> `1.4.9` 过渡期保留旧启动器仓库 `YunxiRamito/DSH-Launcher` 作为下载回退。
 
 ---
 

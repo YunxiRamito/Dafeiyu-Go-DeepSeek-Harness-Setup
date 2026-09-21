@@ -1,8 +1,8 @@
 <Project>
   <PropertyGroup>
-    <InstallerVersion>1.0.1</InstallerVersion>
-    <InstallerVersionFull>1.0.1.0</InstallerVersionFull>
-    <LauncherVersion>1.3.9</LauncherVersion>
+    <InstallerVersion>1.4.9</InstallerVersion>
+    <InstallerVersionFull>1.4.9.0</InstallerVersionFull>
+    <LauncherVersion>1.4.9</LauncherVersion>
     <DshPackage>@deepseek-ai/dsh</DshPackage>
     <DshPackageVersion>^0.1.5-rc.1</DshPackageVersion>
     <NodeLtsMajor>22</NodeLtsMajor>
@@ -21,9 +21,9 @@
       Version 别用 1.0.0+<commit> 那种形式:属性页里那串 hash 很难看,
       要看 commit 去 Release 页面看。
     -->
-    <Product>DeepSeek Harness</Product>
-    <AssemblyTitle>DeepSeek Harness 安装程序</AssemblyTitle>
-    <Description>DeepSeek Harness 的一体化 Windows 安装程序</Description>
+    <Product>Dafeiyu-Go</Product>
+    <AssemblyTitle>大肥鱼Go安装程序</AssemblyTitle>
+    <Description>大肥鱼Go，面向 DeepSeek Harness 的一体化 Windows 安装程序</Description>
     <Company>Deepseek / KitamaruRamito</Company>
     <Copyright>Copyright © 2026 Deepseek / KitamaruRamito · MIT License</Copyright>
     <Version>$(InstallerVersion)</Version>
@@ -38,10 +38,10 @@
     <InformationalVersion>$(InstallerVersion)</InformationalVersion>
 
     <!-- 引导程序那份的标题(和主程序不同:一个是安装程序,一个是引导程序) -->
-    <BootTitle>DeepSeek Harness 安装程序</BootTitle>
-    <BootDescription>DeepSeek Harness 的一体化 Windows 安装程序</BootDescription>
-    <UninstallTitle>DeepSeek Harness 卸载程序</UninstallTitle>
-    <UninstallDescription>卸载 DeepSeek Harness 以及它装上的组件</UninstallDescription>
+    <BootTitle>大肥鱼Go安装程序</BootTitle>
+    <BootDescription>大肥鱼Go，面向 DeepSeek Harness 的一体化 Windows 安装程序</BootDescription>
+    <UninstallTitle>大肥鱼Go卸载程序</UninstallTitle>
+    <UninstallDescription>卸载大肥鱼Go以及它装上的 DeepSeek Harness 组件</UninstallDescription>
 
     <Authors>Deepseek/KitamaruRamito</Authors>
   </PropertyGroup>

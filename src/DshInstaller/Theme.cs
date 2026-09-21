@@ -10,6 +10,29 @@ namespace DshInstaller
     /// </summary>
     internal static class Theme
     {
+        public static void Bind(
+            FrameworkElement element,
+            DependencyProperty property,
+            string key,
+            Windows.UI.Color fallback)
+        {
+            if (element == null || property == null)
+            {
+                return;
+            }
+
+            Action apply = delegate
+            {
+                element.SetValue(property, Brush(key, fallback));
+            };
+
+            apply();
+            element.ActualThemeChanged += delegate
+            {
+                apply();
+            };
+        }
+
         public static Brush Brush(string key, Windows.UI.Color fallback)
         {
             try

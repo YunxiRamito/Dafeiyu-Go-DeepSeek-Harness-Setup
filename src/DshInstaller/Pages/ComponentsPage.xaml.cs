@@ -26,6 +26,11 @@ namespace DshInstaller.Pages
         public ComponentsPage()
         {
             InitializeComponent();
+            Theme.Bind(
+                ElevationHint,
+                TextBlock.ForegroundProperty,
+                "WarningTextBrush",
+                Windows.UI.Color.FromArgb(255, 196, 118, 0));
             ApplyText();
             Loaded += OnLoaded;
         }
@@ -117,7 +122,6 @@ namespace DshInstaller.Pages
             }
 
             ElevationHint.Text = note;
-            ElevationHint.Foreground = Brush("WarningTextBrush", Windows.UI.Color.FromArgb(255, 196, 118, 0));
             ElevationHint.Visibility = Visibility.Visible;
         }
 
@@ -188,8 +192,12 @@ namespace DshInstaller.Pages
                 TextWrapping = TextWrapping.NoWrap,
                 TextTrimming = TextTrimming.CharacterEllipsis,
                 Margin = new Thickness(30, 0, 0, 4),
-                Foreground = Brush("TertiaryTextBrush", Windows.UI.Color.FromArgb(255, 138, 144, 153)),
             };
+            Theme.Bind(
+                whyText,
+                TextBlock.ForegroundProperty,
+                "TertiaryTextBrush",
+                Windows.UI.Color.FromArgb(255, 138, 144, 153));
 
             _optionalBoxes[id] = box;
 

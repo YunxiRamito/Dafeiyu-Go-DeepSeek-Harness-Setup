@@ -29,6 +29,13 @@ namespace DshInstaller.Pages
             _dispatcher = DispatcherQueue.GetForCurrentThread();
             ApplyText();
             Loaded += OnLoaded;
+            ActualThemeChanged += delegate
+            {
+                if (_report != null)
+                {
+                    ShowVerdict(_report);
+                }
+            };
         }
 
         public bool CanGoNext

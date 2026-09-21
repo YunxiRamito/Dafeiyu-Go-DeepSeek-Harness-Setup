@@ -179,8 +179,12 @@ namespace DshInstaller.Pages
                     FontSize = 11.5,
                     TextWrapping = TextWrapping.Wrap,
                     Margin = new Thickness(0, 6, 0, 2),
-                    Foreground = Theme.Brush("TertiaryTextBrush", Windows.UI.Color.FromArgb(255, 138, 144, 153)),
                 };
+                Theme.Bind(
+                    note,
+                    TextBlock.ForegroundProperty,
+                    "TertiaryTextBrush",
+                    Windows.UI.Color.FromArgb(255, 138, 144, 153));
                 ItemsHost.Children.Add(note);
             }
         }
@@ -204,29 +208,39 @@ namespace DshInstaller.Pages
 
             if (!string.IsNullOrWhiteSpace(path))
             {
-                row.Children.Add(new TextBlock
+                TextBlock pathText = new TextBlock
                 {
                     Text = path,
                     FontSize = 11,
                     Margin = new Thickness(30, 0, 0, 0),
                     FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("Consolas"),
                     TextWrapping = TextWrapping.Wrap,
-                    Foreground = Theme.Brush("TertiaryTextBrush", Windows.UI.Color.FromArgb(255, 138, 144, 153)),
-                });
+                };
+                Theme.Bind(
+                    pathText,
+                    TextBlock.ForegroundProperty,
+                    "TertiaryTextBrush",
+                    Windows.UI.Color.FromArgb(255, 138, 144, 153));
+                row.Children.Add(pathText);
             }
 
             string hint = ours ? description : Localization.T("uninstall.notOurs");
 
             if (!string.IsNullOrWhiteSpace(hint))
             {
-                row.Children.Add(new TextBlock
+                TextBlock hintText = new TextBlock
                 {
                     Text = hint,
                     FontSize = 10.5,
                     Margin = new Thickness(30, 0, 0, 0),
                     TextWrapping = TextWrapping.Wrap,
-                    Foreground = Theme.Brush("TertiaryTextBrush", Windows.UI.Color.FromArgb(255, 138, 144, 153)),
-                });
+                };
+                Theme.Bind(
+                    hintText,
+                    TextBlock.ForegroundProperty,
+                    "TertiaryTextBrush",
+                    Windows.UI.Color.FromArgb(255, 138, 144, 153));
+                row.Children.Add(hintText);
             }
 
             ItemsHost.Children.Add(row);

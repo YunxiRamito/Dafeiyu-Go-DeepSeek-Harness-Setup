@@ -1,4 +1,4 @@
-# 安装器发布指南
+# 大肥鱼Go安装器发布指南
 
 > 配套读:启动器仓库的 `RELEASE.md`(那边讲怎么发启动器,这边讲怎么发安装器)。
 > 两份是对称的 —— 装的人拿到的是安装器,安装器再去启动器仓库拿启动器。
@@ -48,7 +48,7 @@ cd 'G:\DeepSeek DSH\DSH Works\DSH Installer'
 # 先把版本号改好并提交
 #   Directory.Build.props 里的 <InstallerVersion>
 git add -A
-git commit -m "release: v1.0.0"
+git commit -m "release: v1.4.9"
 git push
 
 git tag v1.0.0
@@ -70,7 +70,7 @@ git push origin v1.0.0
 
 ```powershell
 # 1. 改版本号
-#    Directory.Build.props -> <InstallerVersion>1.0.1</InstallerVersion>
+#    Directory.Build.props -> <InstallerVersion>1.4.9</InstallerVersion>
 
 # 2. 出包
 .\pack-release.ps1 -NoDesktop
@@ -80,8 +80,8 @@ git push origin v1.0.0
 (Get-FileHash .\dist\DSH-Installer-Setup.exe -Algorithm SHA256).Hash.ToLower()
 
 # 4. 建 tag 并推
-git tag v1.0.1
-git push origin v1.0.1
+git tag v1.4.9
+git push origin v1.4.9
 ```
 
 然后在 GitHub 上把 `dist\DSH-Installer-Setup.exe` 传成这个 tag 的 Release 资产。

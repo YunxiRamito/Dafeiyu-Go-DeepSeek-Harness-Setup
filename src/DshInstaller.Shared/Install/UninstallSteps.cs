@@ -468,39 +468,64 @@ namespace DshInstaller.Shared.Install
             }
 
             List<string> targets = new List<string>();
+            string[] shortcutNames = new string[]
+            {
+                WellKnown.ProductName,
+                WellKnown.LegacyProductName
+            };
 
-            targets.Add(Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory),
-                WellKnown.ProductName + ".lnk"));
+            string desktop = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
+            for (int index = 0; index < shortcutNames.Length; index++)
+            {
+                targets.Add(Path.Combine(desktop, shortcutNames[index] + ".lnk"));
+            }
 
             string commonDesktop = Environment.GetFolderPath(Environment.SpecialFolder.CommonDesktopDirectory);
             if (!string.IsNullOrEmpty(commonDesktop))
             {
-                targets.Add(Path.Combine(commonDesktop, WellKnown.ProductName + ".lnk"));
+                for (int index = 0; index < shortcutNames.Length; index++)
+                {
+                    targets.Add(Path.Combine(commonDesktop, shortcutNames[index] + ".lnk"));
+                }
             }
 
-            targets.Add(Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.Programs),
-                WellKnown.ProductName + ".lnk"));
+            string startMenuUser = Environment.GetFolderPath(Environment.SpecialFolder.Programs);
+            for (int index = 0; index < shortcutNames.Length; index++)
+            {
+                targets.Add(Path.Combine(startMenuUser, shortcutNames[index] + ".lnk"));
+            }
 
             // 开始菜单那份是装在**同名子文件夹**里的
-            // (%APPDATA%\...\Start Menu\Programs\DeepSeek Harness\DeepSeek Harness.lnk),
+            // 过渡期同时清理新旧产品名的子目录。
             // 机器范围则在 %PROGRAMDATA% 那套下面 —— 两边都要清,子文件夹也要一起收掉。
-            string startMenuUser = Environment.GetFolderPath(Environment.SpecialFolder.Programs);
             if (!string.IsNullOrEmpty(startMenuUser))
             {
-                targets.Add(Path.Combine(startMenuUser, WellKnown.ProductName, WellKnown.ProductName + ".lnk"));
+                for (int index = 0; index < shortcutNames.Length; index++)
+                {
+                    targets.Add(Path.Combine(
+                        startMenuUser,
+                        shortcutNames[index],
+                        shortcutNames[index] + ".lnk"));
+                }
             }
 
             string startMenuMachine = Environment.GetFolderPath(Environment.SpecialFolder.CommonPrograms);
             if (!string.IsNullOrEmpty(startMenuMachine))
             {
-                targets.Add(Path.Combine(startMenuMachine, WellKnown.ProductName, WellKnown.ProductName + ".lnk"));
+                for (int index = 0; index < shortcutNames.Length; index++)
+                {
+                    targets.Add(Path.Combine(
+                        startMenuMachine,
+                        shortcutNames[index],
+                        shortcutNames[index] + ".lnk"));
+                }
             }
 
-            targets.Add(Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.Startup),
-                WellKnown.ProductName + ".lnk"));
+            string startup = Environment.GetFolderPath(Environment.SpecialFolder.Startup);
+            for (int index = 0; index < shortcutNames.Length; index++)
+            {
+                targets.Add(Path.Combine(startup, shortcutNames[index] + ".lnk"));
+            }
 
             int deleted = 0;
             for (int i = 0; i < targets.Count; i++)
@@ -528,17 +553,20 @@ namespace DshInstaller.Shared.Install
                     continue;
                 }
 
-                try
+                for (int index = 0; index < shortcutNames.Length; index++)
                 {
-                    string folder = Path.Combine(root, WellKnown.ProductName);
-                    if (Directory.Exists(folder) && Directory.GetFiles(folder).Length == 0)
+                    try
                     {
-                        Directory.Delete(folder);
-                        context.Log("已删除空目录 " + folder);
+                        string folder = Path.Combine(root, shortcutNames[index]);
+                        if (Directory.Exists(folder) && Directory.GetFiles(folder).Length == 0)
+                        {
+                            Directory.Delete(folder);
+                            context.Log("已删除空目录 " + folder);
+                        }
                     }
-                }
-                catch
-                {
+                    catch
+                    {
+                    }
                 }
             }
 
