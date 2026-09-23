@@ -34,7 +34,7 @@ namespace DshInstaller.Shared
             }
         }
 
-        public const string LauncherVersion = "1.4.9";
+        public const string LauncherVersion = "1.4.9.1";
 
         /// <summary>DSH 的 npm 包名。</summary>
         public const string DshPackage = "@deepseek-ai/dsh";

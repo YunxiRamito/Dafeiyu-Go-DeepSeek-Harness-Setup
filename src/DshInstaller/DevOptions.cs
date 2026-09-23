@@ -58,6 +58,7 @@ namespace DshInstaller
         public static string ComponentsRoot { get; private set; }
         public static bool AllUsers { get; private set; }
         public static string Source { get; private set; } = "china";
+        public static string PreviewStyle { get; private set; } = "auto";
         public static bool WantGit { get; private set; }
         public static bool WantPnpm { get; private set; }
         public static bool WantPython { get; private set; }
@@ -202,6 +203,14 @@ namespace DshInstaller
 
                     case "source":
                         Source = value.StartsWith("off", StringComparison.OrdinalIgnoreCase) ? "official" : "china";
+                        break;
+
+                    case "preview-style":
+                        PreviewStyle = value.StartsWith("win10", StringComparison.OrdinalIgnoreCase)
+                            ? "win10"
+                            : (value.StartsWith("win11", StringComparison.OrdinalIgnoreCase)
+                                ? "win11"
+                                : "auto");
                         break;
 
                     case "report":

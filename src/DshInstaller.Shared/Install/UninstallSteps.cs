@@ -154,6 +154,40 @@ namespace DshInstaller.Shared.Install
                             context.Log("清理状态文件失败:" + exception.Message);
                         }
 
+                        try
+                        {
+                            string bootRoot = Path.Combine(
+                                Environment.GetFolderPath(
+                                    Environment.SpecialFolder.LocalApplicationData),
+                                "DeepSeekHarness",
+                                "Boot");
+                            if (Directory.Exists(bootRoot))
+                            {
+                                foreach (string file in Directory.GetFiles(
+                                    bootRoot,
+                                    "*",
+                                    SearchOption.AllDirectories))
+                                {
+                                    try { File.Delete(file); } catch { }
+                                }
+
+                                foreach (string directory in Directory.GetDirectories(
+                                    bootRoot,
+                                    "*",
+                                    SearchOption.AllDirectories))
+                                {
+                                    try { Directory.Delete(directory, false); } catch { }
+                                }
+
+                                Directory.Delete(bootRoot, false);
+                                context.Log("已清理引导临时目录:" + bootRoot);
+                            }
+                        }
+                        catch (Exception exception)
+                        {
+                            context.Log("引导临时目录未完全清理:" + exception.Message);
+                        }
+
                         context.Report(SharedText.T("完成", "Done"), 100);
                     }, token);
                 }));
@@ -793,6 +827,11 @@ namespace DshInstaller.Shared.Install
             if (!string.IsNullOrWhiteSpace(options.LauncherRoot) && Directory.Exists(options.LauncherRoot))
             {
                 left.Add(options.LauncherRoot);
+            }
+
+            if (!string.IsNullOrWhiteSpace(options.ComponentsRoot) && Directory.Exists(options.ComponentsRoot))
+            {
+                left.Add(options.ComponentsRoot);
             }
 
             if (left.Count > 0)

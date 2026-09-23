@@ -56,7 +56,7 @@ namespace DshInstaller.Pages
             Scaffold.Subtitle = cancelled
                 ? Localization.T("failed.desc.cancelled")
                 : Localization.T("failed.desc");
-            Scaffold.SetStep(6);
+            Scaffold.SetStep(8);
 
             ReasonLabel.Text = Localization.T("failed.reasons");
             RollbackLabel.Text = Localization.T("failed.rollback");

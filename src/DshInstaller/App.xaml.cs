@@ -19,6 +19,7 @@ namespace DshInstaller
         {
             try
             {
+                PlatformStyle.ApplyApplicationResources(Resources);
                 _window = new MainWindow();
                 MainWindowInstance = _window;
                 _window.Activate();

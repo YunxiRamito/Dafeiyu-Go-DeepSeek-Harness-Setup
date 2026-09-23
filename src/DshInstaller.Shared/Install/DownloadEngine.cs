@@ -126,7 +126,8 @@ namespace DshInstaller.Shared.Install
             Action<DownloadProgress> progress,
             Func<bool> cancellation,
             Func<string, bool> onSourceFailed = null,
-            Action<string> onNotice = null)
+            Action<string> onNotice = null,
+            bool allowSegmented = true)
         {
             if (urls == null || urls.Count == 0)
             {
@@ -159,7 +160,13 @@ namespace DshInstaller.Shared.Install
             // 它是旁路:只在"支持 Range 且够大"时接活,任何一步不顺(探测、分段、合并、校验)
             // 都返回 false,这里就原样落到下面那套单连接逻辑。
             // 所以它的失败模式是"退化成以前那样",而不是"装不上"。
-            if (SegmentedDownloader.TryDownload(ordered, targetPath, progress, cancellation, onNotice))
+            if (allowSegmented
+                && SegmentedDownloader.TryDownload(
+                    ordered,
+                    targetPath,
+                    progress,
+                    cancellation,
+                    onNotice))
             {
                 return targetPath;
             }

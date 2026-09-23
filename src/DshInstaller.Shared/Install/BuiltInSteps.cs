@@ -30,6 +30,7 @@ namespace DshInstaller.Shared.Install
         public const string IdWinAppRuntime = "runtime-winapprt";
         public const string IdUninstaller = "uninstaller";
         public const string IdLaunch = "launch";
+        public const string IdRecommendedPlugins = "recommended-plugins";
 
         // 便携组件的默认版本。Node 会去查最新 LTS,这三个先用固定版本(改这里即可升级)。
         private const string DefaultGitVersion = "2.50.1";
@@ -1957,6 +1958,12 @@ namespace DshInstaller.Shared.Install
                 plan.Add(Python(options));
             }
 
+            if (options.RecommendedPluginSpecs != null
+                && options.RecommendedPluginSpecs.Count > 0)
+            {
+                plan.Add(RecommendedPlugins(options));
+            }
+
             // 有东西要写才排这一步。没东西写还列一行"没有需要写 PATH 的组件",
             // 用户只会以为漏了(实测反馈:这几项看着像写死的)。
             if (options.InstallNode || options.InstallGit || options.InstallPnpm)
@@ -1983,6 +1990,54 @@ namespace DshInstaller.Shared.Install
             // 做成计划里的步骤,用户勾了没勾都照启(实测反馈)。见 DonePage.OnNext()。
 
             return plan;
+        }
+
+        public static InstallStep RecommendedPlugins(InstallOptions options)
+        {
+            return new InstallStep
+            {
+                Id = IdRecommendedPlugins,
+                Title = SharedText.T(
+                    "安装推荐插件",
+                    "Install recommended plug-ins"),
+                Required = false,
+                Run = delegate(InstallContext context, CancellationToken token)
+                {
+                    return Task.Run(delegate
+                    {
+                        try
+                        {
+                            RecommendedPluginInstaller.Install(
+                                context.Options,
+                                context.Options.RecommendedPluginSpecs,
+                                delegate(string detail, double percent)
+                                {
+                                    context.Report(detail, percent);
+                                },
+                                context.Log,
+                                token);
+                        }
+                        catch (OperationCanceledException)
+                        {
+                            throw;
+                        }
+                        catch (Exception exception)
+                        {
+                            // This is an optional convenience step. A plugin
+                            // failure must never turn the whole install into
+                            // "partially completed" or block the launcher.
+                            context.Log(
+                                "推荐插件安装失败，已跳过："
+                                + exception.Message);
+                            context.Report(
+                                SharedText.T(
+                                    "推荐插件失败，已跳过",
+                                    "Recommended plug-ins failed and were skipped"),
+                                100);
+                        }
+                    }, token);
+                },
+            };
         }
 
         /// <summary>

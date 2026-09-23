@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <assembly manifestVersion="1.0" xmlns="urn:schemas-microsoft-com:asm.v1">
-  <assemblyIdentity version="1.4.9.0" name="DeepSeek.Harness.Installer" processorArchitecture="*" type="win32" />
+  <assemblyIdentity version="1.4.9.1" name="DeepSeek.Harness.Installer" processorArchitecture="*" type="win32" />
   <description>DeepSeek Harness Installer</description>
 
   <!-- 安装器以普通用户启动,需要管理员时由 ElevationHelper 用 runas 拉一次自己。

@@ -36,6 +36,10 @@ namespace DshInstaller.Shared.Install
         public bool InstallPnpm { get; set; }
         public bool InstallPython { get; set; }
 
+        /// <summary>推荐插件页选中的安装表达式；安装器会自动启用 pnpm。</summary>
+        public List<string> RecommendedPluginSpecs { get; set; } =
+            new List<string>();
+
         /// <summary>
         /// 必装运行库。默认开 —— 它们是硬前置:安装器自己和启动器都跑在 WinUI3 上,
         /// 少一个就直接起不来,所以不是"可选组件"。

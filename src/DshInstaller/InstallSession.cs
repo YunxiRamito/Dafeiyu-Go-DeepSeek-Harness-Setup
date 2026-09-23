@@ -60,6 +60,18 @@ namespace DshInstaller
         public bool InstallPnpm { get; set; }
         public bool InstallPython { get; set; }
 
+        /// <summary>
+        /// Git 和 pnpm 都已具备（本机已有或本次会安装）。
+        /// 推荐插件下载不满足这个条件时必须整页跳过。
+        /// </summary>
+        public bool PluginToolsAvailable { get; set; }
+
+        /// <summary>官方推荐插件页选中的安装表达式。</summary>
+        public System.Collections.Generic.List<string> RecommendedPluginSpecs
+        {
+            get;
+        } = new System.Collections.Generic.List<string>();
+
         /// <summary>装完要不要建桌面快捷方式 / 开机自启。</summary>
         public bool CreateDesktopShortcut { get; set; } = true;
 

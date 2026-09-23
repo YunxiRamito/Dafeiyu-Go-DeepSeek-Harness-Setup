@@ -13,7 +13,7 @@
 
             <!-- 管理员提示,只在选了"为所有用户"时出现 -->
             <Border x:Name="AdminHint" Visibility="Collapsed"
-                    CornerRadius="8" Padding="14,11"
+                    CornerRadius="{ThemeResource CardCornerRadius}" Padding="14,11"
                     Background="{ThemeResource AccentSoftBrush}">
                 <!-- 必须用 Grid 而不是横向 StackPanel:
                      横向 StackPanel 给子元素的可用宽度是无穷大,wrapping 就永远不会生效,

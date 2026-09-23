@@ -47,21 +47,52 @@ namespace DshInstaller.Pages
             session.ComponentsChosen = true;
 
             CheckBox git;
+            bool gitSelected = false;
             if (_optionalBoxes.TryGetValue("git", out git))
             {
-                session.InstallGit = git.IsChecked == true;
+                gitSelected = git.IsChecked == true;
+                session.InstallGit = gitSelected;
             }
 
             CheckBox pnpm;
+            bool pnpmSelected = false;
             if (_optionalBoxes.TryGetValue("pnpm", out pnpm))
             {
-                session.InstallPnpm = pnpm.IsChecked == true;
+                pnpmSelected = pnpm.IsChecked == true;
+                session.InstallPnpm = pnpmSelected;
             }
 
             CheckBox python;
             if (_optionalBoxes.TryGetValue("python", out python))
             {
                 session.InstallPython = python.IsChecked == true;
+            }
+
+            ComponentStatus gitStatus = session.Report == null
+                ? null
+                : session.Report["git"];
+            ComponentStatus pnpmStatus = session.Report == null
+                ? null
+                : session.Report["pnpm"];
+            bool gitAvailable = gitSelected
+                || (gitStatus != null && gitStatus.IsSatisfied);
+            bool pnpmAvailable = pnpmSelected
+                || (pnpmStatus != null && pnpmStatus.IsSatisfied);
+            session.PluginToolsAvailable =
+                gitAvailable && pnpmAvailable;
+
+            if (!session.PluginToolsAvailable)
+            {
+                session.RecommendedPluginSpecs.Clear();
+            }
+
+            MainWindow window = App.MainWindowInstance;
+            if (window != null)
+            {
+                window.SetNextOverride(
+                    session.PluginToolsAvailable
+                        ? WizardPage.RecommendedPlugins
+                        : WizardPage.LauncherLocation);
             }
 
             return true;
@@ -71,18 +102,12 @@ namespace DshInstaller.Pages
         {
             Scaffold.Title = Localization.T("components.title");
             Scaffold.Subtitle = Localization.T("components.desc");
-            Scaffold.SetStep(3);
+            Scaffold.SetStep(4);
 
             RootLabel.Text = Localization.IsChinese ? "组件目录" : "Component directory";
-            SourceLabel.Text = Localization.IsChinese ? "下载源" : "Download source";
             BrowseButton.Content = Localization.T("btn.browse");
             RequiredLabel.Text = Localization.IsChinese ? "必需" : "Required";
             OptionalLabel.Text = Localization.IsChinese ? "可选" : "Optional (selected items will be installed)";
-
-            SourceBox.Items.Clear();
-            SourceBox.Items.Add(Localization.IsChinese ? "国内镜像（推荐）" : "China mirror (recommended)");
-            SourceBox.Items.Add(Localization.IsChinese ? "官方源" : "Official source");
-            SourceBox.SelectedIndex = InstallSession.Current.SourcePreference == MirrorSource.China ? 0 : 1;
 
             // 默认放在 DSH 目录下的 components 子目录里。
             // DSH 位置页现在排在前面,所以这里拿得到它的选择 —— 用户改了 DSH 装哪儿,
@@ -215,12 +240,6 @@ namespace DshInstaller.Pages
             {
                 RootBox.Text = picked;
             }
-        }
-
-        private void OnSourceChanged(object sender, SelectionChangedEventArgs e)
-        {
-            InstallSession.Current.SourcePreference =
-                SourceBox.SelectedIndex == 1 ? MirrorSource.Official : MirrorSource.China;
         }
 
         private static Brush Brush(string key, Windows.UI.Color fallback)

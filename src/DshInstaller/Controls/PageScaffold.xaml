@@ -11,8 +11,7 @@
       不会变成 UserControl 自己的 Content(那样会把整个外框顶掉)。
     -->
     <Grid Padding="28,16,28,12">
-        <!-- 居中 + 上限 600:窗口被 DPI 或小屏压窄时能自动收缩,不会横向裁掉内容 -->
-                <Grid HorizontalAlignment="Stretch" RowSpacing="12">
+        <Grid HorizontalAlignment="Stretch" RowSpacing="14">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
@@ -33,7 +32,11 @@
                            Foreground="{ThemeResource SecondaryTextBrush}" />
             </StackPanel>
 
-            <ContentPresenter x:Name="BodyHost" Grid.Row="2" />
+            <ContentPresenter
+                x:Name="BodyHost"
+                Grid.Row="2"
+                HorizontalAlignment="Stretch"
+                HorizontalContentAlignment="Stretch" />
         </Grid>
     </Grid>
 </UserControl>

@@ -49,7 +49,7 @@ namespace DshInstaller.Pages
         {
             Scaffold.Title = Localization.T("dsh.title");
             Scaffold.Subtitle = Localization.T("dsh.desc");
-            Scaffold.SetStep(2);
+            Scaffold.SetStep(3);
 
             PathLabel.Text = Localization.IsChinese ? "安装到" : "Install to";
             BrowseButton.Content = Localization.T("btn.browse");

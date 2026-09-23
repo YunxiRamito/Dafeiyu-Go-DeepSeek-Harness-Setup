@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
@@ -45,28 +46,35 @@ namespace DshInstaller.Pages
             if (InstallSession.Current.LaunchAfterwards
                 && InstallSession.Current.Mode == SessionMode.Install)
             {
-                LaunchLauncher();
+                if (LaunchLauncher())
+                {
+                    // Give the elevated shell launch a moment to get past the
+                    // installer process before this window exits.
+                    Thread.Sleep(1200);
+                }
             }
 
             return true;
         }
 
         /// <summary>把启动器拉起来。起不来只记日志 —— 用户点快捷方式一样能开。</summary>
-        private void LaunchLauncher()
+        private bool LaunchLauncher()
         {
             try
             {
-                string root = InstallSession.Current.LauncherRoot;
+                string root = ResolveLauncherRoot();
                 if (string.IsNullOrEmpty(root))
                 {
-                    return;
+                    DshInstaller.Shared.InstallLogger.Write(
+                        "完成页:启动器目录为空,无法启动");
+                    return false;
                 }
 
                 string exe = System.IO.Path.Combine(root, DshInstaller.Shared.WellKnown.LauncherExe);
                 if (!System.IO.File.Exists(exe))
                 {
                     DshInstaller.Shared.InstallLogger.Write("完成页:没找到启动器 " + exe);
-                    return;
+                    return false;
                 }
 
                 System.Diagnostics.ProcessStartInfo info = new System.Diagnostics.ProcessStartInfo
@@ -74,15 +82,51 @@ namespace DshInstaller.Pages
                     FileName = exe,
                     WorkingDirectory = root,
                     UseShellExecute = true,
+                    Verb = "runas",
                 };
 
                 System.Diagnostics.Process.Start(info);
                 DshInstaller.Shared.InstallLogger.Write("完成页:已启动 " + exe);
+                return true;
             }
             catch (Exception exception)
             {
                 DshInstaller.Shared.InstallLogger.Write("完成页:启动失败 " + exception.Message);
+                return false;
             }
+        }
+
+        private static string ResolveLauncherRoot()
+        {
+            InstallSession session = InstallSession.Current;
+            if (!string.IsNullOrWhiteSpace(session.LauncherRoot))
+            {
+                return session.LauncherRoot;
+            }
+
+            Shared.InstallerState state = Shared.ConfigStore.Load();
+            if (state != null
+                && !string.IsNullOrWhiteSpace(state.LauncherRoot))
+            {
+                session.LauncherRoot = state.LauncherRoot;
+                if (String.IsNullOrWhiteSpace(session.DshRoot))
+                {
+                    session.DshRoot = state.DshRoot;
+                }
+
+                return state.LauncherRoot;
+            }
+
+            if (!String.IsNullOrWhiteSpace(session.DshRoot))
+            {
+                string fallback = System.IO.Path.Combine(
+                    session.DshRoot,
+                    Shared.WellKnown.LauncherFolder);
+                session.LauncherRoot = fallback;
+                return fallback;
+            }
+
+            return null;
         }
 
         private void ApplyText()
@@ -110,6 +154,7 @@ namespace DshInstaller.Pages
         private void OnLoaded(object sender, RoutedEventArgs e)
         {
             InstallSession session = InstallSession.Current;
+            ResolveLauncherRoot();
             Shared.Install.InstallReport result = session.Result;
 
             SummaryHost.Children.Clear();
@@ -137,11 +182,16 @@ namespace DshInstaller.Pages
             if (ok && optionalFailed.Count > 0)
             {
                 // 黄色感叹号。用固定的注意色,深色模式下也认得出来。
-                Windows.UI.Color warn = Windows.UI.Color.FromArgb(255, 247, 169, 40);
-                BadgeOuter.Fill = new SolidColorBrush(WithAlpha(warn, 46));
-                BadgeInner.Fill = new SolidColorBrush(warn);
+                BadgeOuter.Fill = Theme.Brush(
+                    "WarningSoftBrush",
+                    Windows.UI.Color.FromArgb(46, 247, 169, 40));
+                BadgeInner.Fill = Theme.Brush(
+                    "WarningBrush",
+                    Windows.UI.Color.FromArgb(255, 247, 169, 40));
                 BadgeIcon.Glyph = "\uE7BA";
-                BadgeIcon.Foreground = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 32, 26, 8));
+                BadgeIcon.Foreground = Theme.Brush(
+                    "OnAccentBrush",
+                    Windows.UI.Color.FromArgb(255, 32, 26, 8));
 
                 if (InstallSession.Current.Mode == SessionMode.Uninstall)
                 {
@@ -226,12 +276,6 @@ namespace DshInstaller.Pages
                 AddRow("\uE945", Localization.IsChinese ? "开机自启" : "Start with Windows",
                     Localization.IsChinese ? "已开启" : "Enabled");
             }
-        }
-
-        /// <summary>取同样的颜色、换一个透明度。</summary>
-        private static Windows.UI.Color WithAlpha(Windows.UI.Color color, byte alpha)
-        {
-            return Windows.UI.Color.FromArgb(alpha, color.R, color.G, color.B);
         }
 
         /// <summary>取多行说明的第一行,放进列表里当简短原因。</summary>

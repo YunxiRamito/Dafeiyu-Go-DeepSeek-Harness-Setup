@@ -12,9 +12,11 @@
 
                 <!-- 红色叉叉。和完成页的对勾同一套视觉语言,一眼就知道这次没成。 -->
                 <Grid Width="64" Height="64" HorizontalAlignment="Center" Margin="0,4,0,2">
-                    <Ellipse Fill="#2EF03A3A" />
-                    <Ellipse Width="46" Height="46" Fill="#F03A3A" Opacity="0.92" />
-                    <FontIcon Glyph="&#xE711;" FontSize="22" Foreground="White"
+                    <Ellipse Fill="{ThemeResource DangerSoftBrush}" />
+                    <Ellipse Width="46" Height="46"
+                             Fill="{ThemeResource DangerBrush}" Opacity="0.94" />
+                    <FontIcon Glyph="&#xE711;" FontSize="22"
+                              Foreground="{ThemeResource OnAccentBrush}"
                               HorizontalAlignment="Center" VerticalAlignment="Center" />
                 </Grid>
 
@@ -34,7 +36,7 @@
 
                 <!-- 回滚说明 -->
                 <Border x:Name="RollbackBox" CornerRadius="{ThemeResource CardCornerRadius}"
-                        Background="{ThemeResource CardBackgroundBrush}"
+                        Background="{ThemeResource CardBackgroundSubtleBrush}"
                         BorderBrush="{ThemeResource CardBorderBrush}"
                         BorderThickness="1"
                         Padding="14,10">
@@ -47,7 +49,7 @@
 
                 <!-- 手动下载:自动装不上时,给人一条明路 -->
                 <Border x:Name="ManualBox" CornerRadius="{ThemeResource CardCornerRadius}"
-                        Background="{ThemeResource CardBackgroundBrush}"
+                        Background="{ThemeResource CardBackgroundSubtleBrush}"
                         BorderBrush="{ThemeResource CardBorderBrush}"
                         BorderThickness="1"
                         Padding="14,10">

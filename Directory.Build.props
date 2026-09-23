@@ -1,8 +1,8 @@
 <Project>
   <PropertyGroup>
-    <InstallerVersion>1.4.9</InstallerVersion>
-    <InstallerVersionFull>1.4.9.0</InstallerVersionFull>
-    <LauncherVersion>1.4.9</LauncherVersion>
+    <InstallerVersion>1.4.9.1</InstallerVersion>
+    <InstallerVersionFull>1.4.9.1</InstallerVersionFull>
+    <LauncherVersion>1.4.9.1</LauncherVersion>
     <DshPackage>@deepseek-ai/dsh</DshPackage>
     <DshPackageVersion>^0.1.5-rc.1</DshPackageVersion>
     <NodeLtsMajor>22</NodeLtsMajor>

@@ -23,7 +23,6 @@
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />
@@ -40,15 +39,8 @@
                             Height="30" MinWidth="72"
                             Click="OnBrowseClick" />
 
-                    <TextBlock x:Name="SourceLabel" Grid.Row="1" Grid.Column="0"
-                               VerticalAlignment="Center" FontSize="12.5"
-                               Foreground="{ThemeResource SecondaryTextBrush}" />
-                    <ComboBox x:Name="SourceBox" Grid.Row="1" Grid.Column="1"
-                              Height="30" HorizontalAlignment="Stretch"
-                              SelectionChanged="OnSourceChanged" />
-
                     <!-- "仅为本用户安装"却选了个要管理员权限的目录时在这里提醒(平时收起来) -->
-                    <TextBlock x:Name="ElevationHint" Grid.Row="2" Grid.ColumnSpan="3"
+                    <TextBlock x:Name="ElevationHint" Grid.Row="1" Grid.ColumnSpan="3"
                                FontSize="11.5" TextWrapping="Wrap"
                                Visibility="Collapsed" />
                 </Grid>
@@ -90,7 +82,7 @@
                     </Border>
 
                     <Border Grid.Column="1" CornerRadius="{ThemeResource CardCornerRadius}"
-                            Background="{ThemeResource CardBackgroundBrush}"
+                            Background="{ThemeResource CardBackgroundSubtleBrush}"
                             BorderBrush="{ThemeResource CardBorderBrush}"
                             BorderThickness="1"
                             Padding="14,10"

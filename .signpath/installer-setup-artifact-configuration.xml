@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<artifact-configuration
+    xmlns="http://signpath.io/artifact-configuration/v1"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://signpath.io/artifact-configuration/v1 https://app.signpath.io/Web/artifact-configuration/v1.xsd">
+  <!-- The GitHub artifact is the final Setup EXE itself (archive: false). -->
+  <pe-file path="DSH-Installer-Setup.exe">
+    <authenticode-sign />
+  </pe-file>
+</artifact-configuration>

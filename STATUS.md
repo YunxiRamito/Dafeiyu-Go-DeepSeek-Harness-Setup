@@ -1,7 +1,17 @@
 # 大肥鱼Go / Dafeiyu-Go Setup — 项目状态
 
 > 这份文档是给"下一个我"看的。每次开工先读这里,收工前更新这里。
-> 最后更新:2026-09-19 夜(本轮 15 处修复 + 发布到 GitHub)
+> 最后更新:2026-09-23(1.4.9.1 安装器、回滚与下载源改造)
+
+## 1.4.9.1 当前状态
+
+- 推荐插件页、下载源页和平台风格界面已完成。
+- 推荐插件不再走 Git SSH，改为 GitHub tarball 镜像下载，4 线程、解压、写 `link:`、pnpm install。
+- 插件与组件共用 GitHub 镜像池：`gh-proxy.com`、`ghproxy.net`、`ghfast.top`。
+- 大陆 CDN 与官方下载严格分流。
+- 取消回滚已修复两个根因：回滚使用独立 token；安装开始前记录顶层目录。
+- `C:\Program Files\DeepSeek Harness` 残留问题已在虚拟机复现并定位，代码已修复。
+- 当前唯一发布阻塞是 SignPath 仓库变量和 secret 未配置。
 
 ---
 

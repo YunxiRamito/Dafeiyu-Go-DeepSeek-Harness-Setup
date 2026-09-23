@@ -3,6 +3,10 @@
 # 用法:
 #   .\pack-release.ps1                 打包并放到桌面
 #   .\pack-release.ps1 -NoDesktop      只在 dist 里产出,不拷桌面
+#   .\pack-release.ps1 -Stage PrepareInner -NoDesktop
+#                                      只产出待 SignPath 签名的 payload
+#   .\pack-release.ps1 -Stage Compose -SignedPayloadDirectory <目录> -RequireSignedPayload
+#                                      用签名后的 payload 组装并自检最终 Setup.exe
 #
 # 产物:
 #   dist\DSH-Installer-Setup.exe   单文件安装包(用户拿到的就是这个)
@@ -20,7 +24,11 @@
 #   所以走"附加式自解压":引导程序 exe 后面直接接上 payload.zip,运行时按 EOCD 反推偏移解开。
 
 param(
-    [switch]$NoDesktop
+    [switch]$NoDesktop,
+    [ValidateSet('All', 'PrepareInner', 'Compose')]
+    [string]$Stage = 'All',
+    [string]$SignedPayloadDirectory,
+    [switch]$RequireSignedPayload
 )
 
 $ErrorActionPreference = 'Stop'
@@ -38,6 +46,18 @@ $uninstallExe = Join-Path $dist 'DSH-Uninstall.exe'
 $setupExe = Join-Path $dist 'DSH-Installer-Setup.exe'
 $icon = Join-Path $assets 'DSHInstaller.ico'
 $versionInfoDir = Join-Path $dist '_versioninfo'
+$buildPayload = $Stage -ne 'Compose'
+$composeSetup = $Stage -ne 'PrepareInner'
+
+if ($Stage -eq 'Compose') {
+    if ([string]::IsNullOrWhiteSpace($SignedPayloadDirectory)) {
+        throw 'Stage=Compose 必须指定 -SignedPayloadDirectory'
+    }
+    if (-not (Test-Path -LiteralPath $SignedPayloadDirectory)) {
+        throw "签名后的 payload 目录不存在: $SignedPayloadDirectory"
+    }
+    $publishDir = (Resolve-Path -LiteralPath $SignedPayloadDirectory).Path
+}
 
 # 版本号与产品信息只有一个来源:Directory.Build.props
 $propsPath = Join-Path $root 'Directory.Build.props'
@@ -76,50 +96,55 @@ if (-not (Test-Path -LiteralPath $icon)) {
     & (Join-Path $root 'tools\make-icon.ps1')
 }
 
-Write-Host '[1/7] 框架依赖发布(不带 .NET 运行时,运行库由引导程序按需装)' -ForegroundColor Cyan
+if ($buildPayload) {
+    Write-Host '[1/7] 框架依赖发布(不带 .NET 运行时,运行库由引导程序按需装)' -ForegroundColor Cyan
 
-# 先把占用输出目录的进程请走:进程活着的话 Remove-Item 会静默失败,
-# 于是旧的 .xbf 留在原地和新的一起堆着 —— 界面改动"完全不生效"就是这么来的。
-Get-Process | Where-Object { $_.ProcessName -like '*DSH-Installer*' -or $_.ProcessName -like '*DSH-Uninstall*' } |
-    Stop-Process -Force -ErrorAction SilentlyContinue
-Start-Sleep -Milliseconds 800
+    # 先把占用输出目录的进程请走:进程活着的话 Remove-Item 会静默失败,
+    # 于是旧的 .xbf 留在原地和新的一起堆着 —— 界面改动"完全不生效"就是这么来的。
+    Get-Process | Where-Object { $_.ProcessName -like '*DSH-Installer*' -or $_.ProcessName -like '*DSH-Uninstall*' } |
+        Stop-Process -Force -ErrorAction SilentlyContinue
+    Start-Sleep -Milliseconds 800
 
-for ($attempt = 1; $attempt -le 5; $attempt++) {
-    Remove-Item $publishDir -Recurse -Force -ErrorAction SilentlyContinue
-    if (-not (Test-Path $publishDir)) { break }
-    Start-Sleep -Milliseconds 400
+    for ($attempt = 1; $attempt -le 5; $attempt++) {
+        Remove-Item $publishDir -Recurse -Force -ErrorAction SilentlyContinue
+        if (-not (Test-Path $publishDir)) { break }
+        Start-Sleep -Milliseconds 400
+    }
+    if (Test-Path $publishDir) { throw "输出目录清不掉,可能有进程占着:$publishDir" }
+
+    & $dotnet publish $proj -c Release -r win-x64 --self-contained false `
+        -p:WindowsAppSDKSelfContained=false -p:PublishSingleFile=false `
+        -p:DebugType=None -p:DebugSymbols=false `
+        -o $publishDir --nologo -v minimal 2>&1 |
+        Select-String -Pattern ': error' | ForEach-Object { Write-Host $_.Line -ForegroundColor Red }
+    if ($LASTEXITCODE -ne 0) { throw 'dotnet publish 失败' }
+
+    Write-Host '[2/7] 补 .xbf / .pri(关键)' -ForegroundColor Cyan
+    $bin = Join-Path $root 'src\DshInstaller\bin\Release\net8.0-windows10.0.19041.0'
+    Get-ChildItem $bin -Recurse -Include '*.xbf', '*.pri' -ErrorAction SilentlyContinue | ForEach-Object {
+        $rel = $_.FullName.Substring($bin.Length).TrimStart('\')
+        $dst = Join-Path $publishDir $rel
+        New-Item -ItemType Directory -Path (Split-Path -Parent $dst) -Force | Out-Null
+        Copy-Item $_.FullName $dst -Force
+    }
+    $xbf = (Get-ChildItem $publishDir -Recurse -Filter '*.xbf' -ErrorAction SilentlyContinue | Measure-Object).Count
+    $pri = (Get-ChildItem $publishDir -Recurse -Filter '*.pri' -ErrorAction SilentlyContinue | Measure-Object).Count
+    Write-Host "  .xbf=$xbf  .pri=$pri"
+    if ($xbf -lt 10 -or $pri -lt 1) { throw "XAML 资源缺失(xbf=$xbf pri=$pri),打出来的包会运行不起来" }
+
+    # 去掉 publish 常见的多余子目录(和根目录资源重复,容易加载到旧的那份)
+    $stray = Join-Path $publishDir 'win-x64'
+    if (Test-Path $stray) { Remove-Item $stray -Recurse -Force }
+
+    Write-Host '[3/7] 校验主程序' -ForegroundColor Cyan
+    $exe = Join-Path $publishDir 'DSH-Installer.exe'
+    if (-not (Test-Path $exe)) { throw "没有生成 $exe" }
+    $sizeMb = [math]::Round(((Get-ChildItem $publishDir -Recurse -File | Measure-Object Length -Sum).Sum) / 1MB, 1)
+    Write-Host "  发布输出 $sizeMb MB(框架依赖,所以只有这么大)"
+} else {
+    Write-Host '[1-3/7] 使用 SignPath 已签名 payload' -ForegroundColor Cyan
+    Write-Host "  $publishDir"
 }
-if (Test-Path $publishDir) { throw "输出目录清不掉,可能有进程占着:$publishDir" }
-
-& $dotnet publish $proj -c Release -r win-x64 --self-contained false `
-    -p:WindowsAppSDKSelfContained=false -p:PublishSingleFile=false `
-    -p:DebugType=None -p:DebugSymbols=false `
-    -o $publishDir --nologo -v minimal 2>&1 |
-    Select-String -Pattern ': error' | ForEach-Object { Write-Host $_.Line -ForegroundColor Red }
-if ($LASTEXITCODE -ne 0) { throw 'dotnet publish 失败' }
-
-Write-Host '[2/7] 补 .xbf / .pri(关键)' -ForegroundColor Cyan
-$bin = Join-Path $root 'src\DshInstaller\bin\Release\net8.0-windows10.0.19041.0'
-Get-ChildItem $bin -Recurse -Include '*.xbf', '*.pri' -ErrorAction SilentlyContinue | ForEach-Object {
-    $rel = $_.FullName.Substring($bin.Length).TrimStart('\')
-    $dst = Join-Path $publishDir $rel
-    New-Item -ItemType Directory -Path (Split-Path -Parent $dst) -Force | Out-Null
-    Copy-Item $_.FullName $dst -Force
-}
-$xbf = (Get-ChildItem $publishDir -Recurse -Filter '*.xbf' -ErrorAction SilentlyContinue | Measure-Object).Count
-$pri = (Get-ChildItem $publishDir -Recurse -Filter '*.pri' -ErrorAction SilentlyContinue | Measure-Object).Count
-Write-Host "  .xbf=$xbf  .pri=$pri"
-if ($xbf -lt 10 -or $pri -lt 1) { throw "XAML 资源缺失(xbf=$xbf pri=$pri),打出来的包会运行不起来" }
-
-# 去掉 publish 常见的多余子目录(和根目录资源重复,容易加载到旧的那份)
-$stray = Join-Path $publishDir 'win-x64'
-if (Test-Path $stray) { Remove-Item $stray -Recurse -Force }
-
-Write-Host '[3/7] 校验主程序' -ForegroundColor Cyan
-$exe = Join-Path $publishDir 'DSH-Installer.exe'
-if (-not (Test-Path $exe)) { throw "没有生成 $exe" }
-$sizeMb = [math]::Round(((Get-ChildItem $publishDir -Recurse -File | Measure-Object Length -Sum).Sum) / 1MB, 1)
-Write-Host "  发布输出 $sizeMb MB(框架依赖,所以只有这么大)"
 
 Write-Host '[4/7] 编译引导程序与独立卸载程序(.NET Framework,无前置依赖)' -ForegroundColor Cyan
 
@@ -168,23 +193,62 @@ New-VersionInfo -Path $uninstallVersionFile -Title $uninstallTitle -Description 
 # 引导程序**直接编译成最终文件名** —— PE 里的"原始文件名"取的是编译时的 /out 名字,
 # 先编成 Boot.exe 再改名的话,属性里会一直写着 Boot.exe。
 # 后面的步骤会读它的全部字节、再把 payload 追加到同一个文件里(先读后写,没问题)。
-& $csc @compilerArgs /target:winexe /out:$bootExe `
-    /r:System.IO.Compression.dll /r:System.IO.Compression.FileSystem.dll `
-    /r:System.Windows.Forms.dll /r:System.Drawing.dll `
-    (Join-Path $bootDir 'Boot.cs') $bootVersionFile 2>&1 | ForEach-Object { Write-Host "  $_" }
-if (-not (Test-Path $bootExe)) { throw '引导程序编译失败' }
-if ((Get-Item $bootExe).Length -lt 10240) { throw '引导程序小得不像话,编译多半没成功' }
+if ($composeSetup) {
+    & $csc @compilerArgs /target:winexe /out:$bootExe `
+        /r:System.IO.Compression.dll /r:System.IO.Compression.FileSystem.dll `
+        /r:System.Windows.Forms.dll /r:System.Drawing.dll `
+        (Join-Path $bootDir 'Boot.cs') $bootVersionFile 2>&1 | ForEach-Object { Write-Host "  $_" }
+    if (-not (Test-Path $bootExe)) { throw '引导程序编译失败' }
+    if ((Get-Item $bootExe).Length -lt 10240) { throw '引导程序小得不像话,编译多半没成功' }
+}
 
-& $csc @compilerArgs /target:winexe /out:$uninstallExe `
-    /r:System.Windows.Forms.dll /r:System.Drawing.dll `
-    (Join-Path $bootDir 'Uninstall.cs') $uninstallVersionFile 2>&1 | ForEach-Object { Write-Host "  $_" }
-if (-not (Test-Path $uninstallExe)) { throw 'DSH-Uninstall.exe 编译失败' }
+if ($buildPayload) {
+    & $csc @compilerArgs /target:winexe /out:$uninstallExe `
+        /r:System.Windows.Forms.dll /r:System.Drawing.dll `
+        (Join-Path $bootDir 'Uninstall.cs') $uninstallVersionFile 2>&1 | ForEach-Object { Write-Host "  $_" }
+    if (-not (Test-Path $uninstallExe)) { throw 'DSH-Uninstall.exe 编译失败' }
 
-# 卸载程序要**跟着安装器一起**落地:安装时会被铺到目标机器,
-# 以后用户从"应用和功能"里点卸载,靠的就是它。
-Copy-Item $uninstallExe (Join-Path $publishDir 'DSH-Uninstall.exe') -Force
-Write-Host ("  Boot.exe {0:N0} KB / DSH-Uninstall.exe {1:N0} KB" -f `
-    ((Get-Item $bootExe).Length / 1KB), ((Get-Item $uninstallExe).Length / 1KB))
+    # 卸载程序要**跟着安装器一起**落地:安装时会被铺到目标机器,
+    # 以后用户从"应用和功能"里点卸载,靠的就是它。
+    Copy-Item $uninstallExe (Join-Path $publishDir 'DSH-Uninstall.exe') -Force
+}
+
+if ($composeSetup) {
+    Write-Host ("  Boot.exe {0:N0} KB" -f ((Get-Item $bootExe).Length / 1KB))
+}
+
+if ($Stage -eq 'PrepareInner') {
+    $payloadExe = Join-Path $publishDir 'DSH-Installer.exe'
+    $payloadUninstaller = Join-Path $publishDir 'DSH-Uninstall.exe'
+    if (-not (Test-Path -LiteralPath $payloadExe)) { throw "待签名 payload 缺少 $payloadExe" }
+    if (-not (Test-Path -LiteralPath $payloadUninstaller)) { throw "待签名 payload 缺少 $payloadUninstaller" }
+    $payloadMb = [math]::Round(((Get-ChildItem $publishDir -Recurse -File | Measure-Object Length -Sum).Sum) / 1MB, 1)
+    Write-Host "  待签名 payload $payloadMb MB"
+    Write-Host "准备完成: $publishDir"
+    return
+}
+
+$requiredSignedFiles = @(
+    'DSH-Installer.exe',
+    'DSH-Installer.dll',
+    'DSH-Uninstall.exe',
+    'DshInstaller.Shared.dll'
+)
+foreach ($name in $requiredSignedFiles) {
+    $path = Join-Path $publishDir $name
+    if (-not (Test-Path -LiteralPath $path)) { throw "签名 payload 缺少 $name" }
+}
+
+if ($RequireSignedPayload) {
+    foreach ($name in $requiredSignedFiles) {
+        $path = Join-Path $publishDir $name
+        $signature = Get-AuthenticodeSignature -LiteralPath $path
+        if ($signature.Status -ne 'Valid') {
+            throw "$name 没有有效 Authenticode 签名: $($signature.Status)"
+        }
+        Write-Host "  $name -> $($signature.SignerCertificate.Subject)"
+    }
+}
 
 Write-Host '[5/7] 打 payload.zip' -ForegroundColor Cyan
 if (Test-Path $payloadZip) { Remove-Item $payloadZip -Force }

@@ -1,5 +1,22 @@
 # 变更记录
 
+## [1.4.9.1] - 2026-09-23
+
+### 安装程序
+
+- 新增“推荐插件”向导页，读取官方 `featured-plugins.json`，支持全选、跳过和逐项选择。
+- 推荐插件卡片显示仓库图标；逐项显示正在下载和正在安装的插件名称及进度。
+- 推荐插件改为和启动器一致的 GitHub tarball 下载流程：解压到 `plugins\<repo>`、写入 profile `link:`、执行 pnpm install，不再依赖 Git SSH。
+- 插件下载使用 4 线程；Git、Python、pnpm、Node 等其他大文件继续使用 8 线程。
+- GitHub 镜像池统一为 `gh-proxy.com`、`ghproxy.net`、`ghfast.top`；大陆 CDN 与官方下载严格分流。
+- 下载源选择移到欢迎页后的独立页面，可选大陆 CDN 或官方下载。
+- 卸载时清理 `%LOCALAPPDATA%\DeepSeekHarness\Boot`。
+- 修复完成页“安装后立即打开启动器”勾选后不生效的问题。
+- 修复取消安装后回滚沿用已取消令牌，导致所有清理步骤被跳过的问题。
+- 修复顶层安装目录未被记录为“本次创建”，导致取消回滚后 `C:\Program Files\DeepSeek Harness` 残留的问题。
+- 取消信号现在会传递给 pnpm/git 子进程。
+- 更新顺序与启动器对齐：安装器、卸载器和启动器统一为 `1.4.9.1`。
+
 ## [1.4.9] - 2026-09-22
 
 **Dafeiyu-Go 过渡升级版本**

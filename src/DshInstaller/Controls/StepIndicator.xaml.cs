@@ -13,7 +13,7 @@ namespace DshInstaller.Controls
     public sealed partial class StepIndicator : UserControl
     {
         /// <summary>安装流程的默认格数。卸载流程会用 SetCount 换成 3 格。</summary>
-        private const int DefaultStepCount = 7;
+        private const int DefaultStepCount = 9;
         private const double DotSize = 8;
         private const double ActiveWidth = 24;
         private const double ActiveHeight = 8;

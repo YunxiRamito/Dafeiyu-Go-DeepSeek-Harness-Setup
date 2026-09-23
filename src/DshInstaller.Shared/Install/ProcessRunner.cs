@@ -11,8 +11,9 @@ namespace DshInstaller.Shared.Install
         {
             public int ExitCode { get; set; }
             public string StandardOutput { get; set; }
-            public string StandardError { get; set; }
-            public bool TimedOut { get; set; }
+        public string StandardError { get; set; }
+        public bool TimedOut { get; set; }
+        public bool Cancelled { get; set; }
 
             public string Combined
             {
@@ -56,7 +57,9 @@ namespace DshInstaller.Shared.Install
             string workingDirectory = null,
             int timeoutMs = 600000,
             Action<string> onOutput = null,
-            string extraPath = null)
+            string extraPath = null,
+            System.Collections.Generic.IDictionary<string, string> environment = null,
+            System.Threading.CancellationToken cancellationToken = default)
         {
             Result result = new Result();
 
@@ -126,6 +129,14 @@ namespace DshInstaller.Shared.Install
                     info.EnvironmentVariables["Path"] = extraPath + ";" + current;
                 }
 
+                if (environment != null)
+                {
+                    foreach (System.Collections.Generic.KeyValuePair<string, string> pair in environment)
+                    {
+                        info.EnvironmentVariables[pair.Key] = pair.Value;
+                    }
+                }
+
                 StringBuilder stdout = new StringBuilder();
                 StringBuilder stderr = new StringBuilder();
 
@@ -182,17 +193,39 @@ namespace DshInstaller.Shared.Install
                     process.BeginOutputReadLine();
                     process.BeginErrorReadLine();
 
-                    if (!process.WaitForExit(timeoutMs))
+                    int remaining = timeoutMs;
+                    while (true)
                     {
-                        result.TimedOut = true;
-                        try { process.Kill(true); } catch { }
+                        if (cancellationToken.IsCancellationRequested)
+                        {
+                            result.Cancelled = true;
+                            try { process.Kill(true); } catch { }
+                            break;
+                        }
+
+                        int wait = Math.Min(250, Math.Max(1, remaining));
+                        if (process.WaitForExit(wait))
+                        {
+                            break;
+                        }
+
+                        remaining -= wait;
+                        if (remaining <= 0)
+                        {
+                            result.TimedOut = true;
+                            try { process.Kill(true); } catch { }
+                            break;
+                        }
                     }
-                    else
+
+                    if (!result.TimedOut && !result.Cancelled)
                     {
                         process.WaitForExit();
                     }
 
-                    result.ExitCode = result.TimedOut ? -1 : process.ExitCode;
+                    result.ExitCode = result.TimedOut || result.Cancelled
+                        ? -1
+                        : process.ExitCode;
                 }
 
                 lock (stdout)

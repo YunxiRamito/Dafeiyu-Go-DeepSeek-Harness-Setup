@@ -19,12 +19,14 @@ namespace DshInstaller
     internal enum WizardPage
     {
         Welcome = 0,
+        Source,
         Scope,
         Detect,
 
         /// <summary>先问 DSH 装哪 —— 组件目录的默认值是它的子目录,所以它得排在前面。</summary>
         DshLocation,
         Components,
+        RecommendedPlugins,
         LauncherLocation,
         Confirm,
         Progress,
@@ -143,6 +145,11 @@ namespace DshInstaller
                 ShowBack = false,
                 NextText = "开始安装",
             };
+            _pages[WizardPage.Source] = new PageInfo
+            {
+                Type = typeof(Pages.SourcePage),
+                NextText = "继续",
+            };
             _pages[WizardPage.Scope] = new PageInfo { Type = typeof(Pages.ScopePage) };
             _pages[WizardPage.Detect] = new PageInfo
             {
@@ -151,6 +158,10 @@ namespace DshInstaller
             };
             _pages[WizardPage.Components] = new PageInfo { Type = typeof(Pages.ComponentsPage) };
             _pages[WizardPage.DshLocation] = new PageInfo { Type = typeof(Pages.DshLocationPage) };
+            _pages[WizardPage.RecommendedPlugins] = new PageInfo
+            {
+                Type = typeof(Pages.RecommendedPluginsPage),
+            };
             _pages[WizardPage.LauncherLocation] = new PageInfo { Type = typeof(Pages.LauncherLocationPage) };
             _pages[WizardPage.Confirm] = new PageInfo
             {
@@ -631,10 +642,14 @@ namespace DshInstaller
 
         private Border BuildFooter()
         {
-            Grid grid = new Grid { Padding = new Thickness(24, 12, 24, 16) };
+            Grid grid = new Grid
+            {
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+            };
+            Grid outer = new Grid { Padding = new Thickness(28, 12, 28, 16) };
+            outer.Children.Add(grid);
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
             // 语言切换原本在标题栏里,改用系统原生标题栏后放到页脚最左边
@@ -692,12 +707,9 @@ namespace DshInstaller
                 Content = Localization.T("btn.back"),
                 MinWidth = 96,
                 Height = 34,
-                Margin = new Thickness(0, 0, 10, 0),
                 CornerRadius = Theme.CornerRadius("ButtonCornerRadius", 6),
             };
             _backButton.Click += OnBackClick;
-            Grid.SetColumn(_backButton, 2);
-            grid.Children.Add(_backButton);
 
             _nextButton = new Button
             {
@@ -720,8 +732,6 @@ namespace DshInstaller
             }
 
             _nextButton.Click += OnNextClick;
-            Grid.SetColumn(_nextButton, 3);
-            grid.Children.Add(_nextButton);
 
             // 页面自己的动作按钮(目前只有进度页的"取消"用它)。
             // 放在最右,和"下一步"同一列 —— 进度页本来就把 Next 藏起来了,位置正好腾出来。
@@ -733,14 +743,25 @@ namespace DshInstaller
                 CornerRadius = Theme.CornerRadius("ButtonCornerRadius", 6),
             };
             _actionButton.Click += OnActionClick;
-            Grid.SetColumn(_actionButton, 3);
-            grid.Children.Add(_actionButton);
+
+            StackPanel actions = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                HorizontalAlignment = HorizontalAlignment.Right,
+                VerticalAlignment = VerticalAlignment.Center,
+                Spacing = 8,
+            };
+            actions.Children.Add(_backButton);
+            actions.Children.Add(_nextButton);
+            actions.Children.Add(_actionButton);
+            Grid.SetColumn(actions, 2);
+            grid.Children.Add(actions);
 
             _footerBorder = new Border
             {
                 BorderThickness = new Thickness(0, 1, 0, 0),
                 BorderBrush = Theme.Brush("DividerBrush", Windows.UI.Color.FromArgb(18, 0, 0, 0)),
-                Child = grid,
+                Child = outer,
             };
             return _footerBorder;
         }

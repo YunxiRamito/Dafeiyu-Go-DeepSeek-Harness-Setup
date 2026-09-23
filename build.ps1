@@ -31,7 +31,7 @@ $frameworkCompiler = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319
 $iconPath = Join-Path $PSScriptRoot 'assets\DSHInstaller.ico'
 $launcherRoot = Join-Path (Split-Path $PSScriptRoot -Parent) 'Dafeiyu-Go-DeepSeek-Harness-Click-To-Run'
 $launcherProject = Join-Path $launcherRoot 'source\DeepSeekHarness.csproj'
-$launcherVersion = '1.4.9'
+$launcherVersion = '1.4.9.1'
 if (Test-Path -LiteralPath $launcherProject) {
     $launcherProjectText = Get-Content -LiteralPath $launcherProject -Raw -Encoding UTF8
     $launcherVersionMatch = [regex]::Match($launcherProjectText, '<Version>([^<]+)</Version>')

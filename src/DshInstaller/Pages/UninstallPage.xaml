@@ -12,7 +12,7 @@
         <StackPanel Spacing="14" VerticalAlignment="Top">
 
             <Border CornerRadius="{ThemeResource CardCornerRadius}"
-                    Background="{ThemeResource CardBackgroundBrush}"
+                    Background="{ThemeResource CardBackgroundSubtleBrush}"
                     BorderBrush="{ThemeResource CardBorderBrush}"
                     BorderThickness="1"
                     Padding="16,12">

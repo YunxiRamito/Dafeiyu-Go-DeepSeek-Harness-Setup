@@ -40,7 +40,7 @@ namespace DshInstaller.Shared.Install
         }
 
         /// <summary>
-        /// Node 的所有可用下载源,按偏好排序。
+        /// Node 在所选线路内的候选下载源。
         /// 实测(2026-09-19,国内网络):npmmirror 262ms / ustc 324ms / nju 353ms / aliyun 475ms / 官方 699ms,
         /// 清华源不可用所以没放。
         /// </summary>
@@ -59,15 +59,10 @@ namespace DshInstaller.Shared.Install
                 result.Add(ustc);
                 result.Add(nju);
                 result.Add(aliyun);
-                result.Add(official);
             }
             else
             {
                 result.Add(official);
-                result.Add(npmmirror);
-                result.Add(ustc);
-                result.Add(nju);
-                result.Add(aliyun);
             }
 
             return result;
@@ -77,16 +72,15 @@ namespace DshInstaller.Shared.Install
         public static List<string> NodeIndexUrls(string preference)
         {
             List<string> result = new List<string>();
-            result.Add("https://registry.npmmirror.com/-/binary/node/index.json");
-            result.Add("https://nodejs.org/dist/index.json");
-            result.Add("https://mirrors.ustc.edu.cn/node/index.json");
-            result.Add("https://mirror.nju.edu.cn/nodejs-release/index.json");
-
-            if (!string.Equals(preference, China, StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(preference, China, StringComparison.OrdinalIgnoreCase))
             {
-                // 官方优先时把它挪到最前
-                result.Remove("https://nodejs.org/dist/index.json");
-                result.Insert(0, "https://nodejs.org/dist/index.json");
+                result.Add("https://registry.npmmirror.com/-/binary/node/index.json");
+                result.Add("https://mirrors.ustc.edu.cn/node/index.json");
+                result.Add("https://mirror.nju.edu.cn/nodejs-release/index.json");
+            }
+            else
+            {
+                result.Add("https://nodejs.org/dist/index.json");
             }
 
             return result;
@@ -131,8 +125,8 @@ namespace DshInstaller.Shared.Install
         /// <summary>
         /// 是不是"加速线路"。
         ///
-        /// 用户定的规矩:选加速线路就**优先国内镜像**(jsDelivr 的国内镜像 / 华为云),
-        /// GitHub 只当兜底;选官方线路就**全部走官方源**,一个镜像都不塞 ——
+        /// 用户定的规矩:选加速线路就**全部走国内镜像**(jsDelivr 的国内镜像 / 华为云),
+        /// 不跨到官方源;选官方线路就**全部走官方源**,一个镜像都不塞 ——
         /// 那种情况通常是人在墙外,直连比什么都快。
         /// </summary>
         public static bool IsChina(string preference)
@@ -157,7 +151,7 @@ namespace DshInstaller.Shared.Install
         }
 
         /// <summary>
-        /// MinGit 的候选地址,按线路给。
+        /// MinGit 在所选线路内的候选地址。
         ///
         /// 虚拟机实测(2026-09-19):同一个 46 MB 包 ——
         ///   华为云 10,527 KB/s | npmmirror 8,426 KB/s | github.com **17 KB/s**
@@ -174,9 +168,10 @@ namespace DshInstaller.Shared.Install
                 result.Add("https://mirrors.huaweicloud.com/git-for-windows/" + folder + "/" + file);
                 result.Add("https://registry.npmmirror.com/-/binary/git-for-windows/" + folder + "/" + file);
             }
-
-            // 官方兜底。加速线路上再过一遍 ghproxy 那层前缀 —— 国内直连 github 常常被拒。
-            result.AddRange(LauncherFeed.MirrorizeAsset(MinGitOfficial(version), preference));
+            else
+            {
+                result.Add(MinGitOfficial(version));
+            }
             return result;
         }
 
@@ -191,13 +186,15 @@ namespace DshInstaller.Shared.Install
                 result.Add("https://mirrors.huaweicloud.com/python/" + version + "/" + file);
                 result.Add("https://registry.npmmirror.com/-/binary/python/" + version + "/" + file);
             }
-
-            result.Add(PythonOfficial(version));
+            else
+            {
+                result.Add(PythonOfficial(version));
+            }
             return result;
         }
 
         /// <summary>
-        /// pnpm 的候选地址。
+        /// pnpm 在所选线路内的候选地址。
         ///
         /// pnpm 是唯一**没有现成镜像**的:华为云的 /pnpm/ 是个前端页面(不是目录),
         /// npmmirror 的二进制目录里也没有 pnpm。但它的平台二进制本身发布在 npm 上 ——
@@ -214,8 +211,10 @@ namespace DshInstaller.Shared.Install
             {
                 result.Add(PnpmTarballUrl(version));
             }
-
-            result.AddRange(LauncherFeed.MirrorizeAsset(PnpmOfficial(version), preference));
+            else
+            {
+                result.Add(PnpmOfficial(version));
+            }
             return result;
         }
 
@@ -232,6 +231,41 @@ namespace DshInstaller.Shared.Install
             return string.Equals(preference, China, StringComparison.OrdinalIgnoreCase)
                 ? "https://registry.npmmirror.com"
                 : "https://registry.npmjs.org";
+        }
+
+        /// <summary>
+        /// GitHub 资源共用的镜像池。启动器更新、GitHub 插件等所有 GitHub 文件
+        /// 都从这里取候选，避免每个模块各写一套代理顺序。
+        /// 大陆线路只返回镜像；官方线路只返回原始地址。
+        /// </summary>
+        public static List<string> GitHubProxyUrls(
+            string githubUrl,
+            string preference)
+        {
+            List<string> result = new List<string>();
+            if (string.IsNullOrWhiteSpace(githubUrl))
+            {
+                return result;
+            }
+
+            if (!IsChina(preference))
+            {
+                result.Add(githubUrl);
+                return result;
+            }
+
+            string[] proxies = new string[]
+            {
+                "https://gh-proxy.com/",
+                "https://ghproxy.net/",
+                "https://ghfast.top/"
+            };
+            for (int index = 0; index < proxies.Length; index++)
+            {
+                result.Add(proxies[index] + githubUrl);
+            }
+
+            return result;
         }
 
         // ------------------------------------------------------------ 系统组件(运行库)

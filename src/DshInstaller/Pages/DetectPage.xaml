@@ -34,7 +34,9 @@
             <!-- 结论条 -->
             <Border x:Name="VerdictBox" Grid.Row="2" Visibility="Collapsed"
                     Margin="0,14,0,0"
-                    CornerRadius="8" Padding="14,11">
+                    CornerRadius="{ThemeResource CardCornerRadius}" Padding="14,11"
+                    BorderThickness="1"
+                    BorderBrush="{ThemeResource CardBorderBrush}">
                 <StackPanel Orientation="Horizontal" Spacing="9">
                     <FontIcon x:Name="VerdictIcon" FontSize="14" Glyph="&#xE73E;"
                               VerticalAlignment="Center" />

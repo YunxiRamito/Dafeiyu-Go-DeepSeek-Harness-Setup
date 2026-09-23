@@ -6,7 +6,10 @@
     xmlns:controls="using:DshInstaller.Controls"
     Background="Transparent">
 
-    <Grid Padding="36,14,36,12" RowSpacing="12">
+    <Grid
+        Padding="28,16,28,12"
+        HorizontalAlignment="Stretch"
+        RowSpacing="12">
         <Grid.RowDefinitions>
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
@@ -21,8 +24,9 @@
             <Grid Width="64" Height="64" HorizontalAlignment="Center">
                 <Ellipse x:Name="BadgeOuter" Fill="{ThemeResource AccentSoftBrush}" />
                 <Ellipse x:Name="BadgeInner" Width="46" Height="46"
-                         Fill="{ThemeResource AccentBrush}" Opacity="0.9" />
-                <FontIcon x:Name="BadgeIcon" Glyph="&#xE73E;" FontSize="22" Foreground="White"
+                         Fill="{ThemeResource AccentBrush}" Opacity="0.94" />
+                <FontIcon x:Name="BadgeIcon" Glyph="&#xE73E;" FontSize="22"
+                          Foreground="{ThemeResource OnAccentBrush}"
                           HorizontalAlignment="Center" VerticalAlignment="Center" />
             </Grid>
 
@@ -56,7 +60,7 @@
 
             <!-- 只给"未完全完成"用:哪些可选组件没装上 -->
             <Border x:Name="PartialBox" CornerRadius="{ThemeResource CardCornerRadius}"
-                    Background="{ThemeResource CardBackgroundBrush}"
+                    Background="{ThemeResource WarningSoftBrush}"
                     BorderBrush="{ThemeResource CardBorderBrush}"
                     BorderThickness="1"
                     Padding="18,12"

@@ -28,7 +28,7 @@
             </Border>
 
             <Border Grid.Row="1" CornerRadius="{ThemeResource CardCornerRadius}"
-                    Background="{ThemeResource CardBackgroundBrush}"
+                    Background="{ThemeResource CardBackgroundSubtleBrush}"
                     BorderBrush="{ThemeResource CardBorderBrush}"
                     BorderThickness="1"
                     Padding="14,12"

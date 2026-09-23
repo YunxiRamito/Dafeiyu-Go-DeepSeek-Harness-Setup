@@ -67,7 +67,7 @@ namespace DshInstaller.Pages
         {
             Scaffold.Title = Localization.T("detect.title");
             Scaffold.Subtitle = Localization.T("detect.desc");
-            Scaffold.SetStep(1);
+            Scaffold.SetStep(2);
             ProgressText.Text = Localization.T("detect.running");
         }
 
@@ -202,8 +202,8 @@ namespace DshInstaller.Pages
 
             if (!report.IsWindowsSupported)
             {
-                VerdictBox.Background = Brush("DangerBrush", Windows.UI.Color.FromArgb(255, 214, 69, 69));
-                VerdictBox.Opacity = 0.14;
+                VerdictBox.Background = Brush("DangerSoftBrush", Windows.UI.Color.FromArgb(32, 214, 69, 69));
+                VerdictBox.Opacity = 1;
                 VerdictIcon.Glyph = "\uE7BA";
                 VerdictIcon.Foreground = Brush("DangerBrush", Windows.UI.Color.FromArgb(255, 214, 69, 69));
                 VerdictText.Text = Localization.T("detect.winbad");
@@ -212,14 +212,14 @@ namespace DshInstaller.Pages
 
             if (report.AllRequiredReady)
             {
-                VerdictBox.Background = Brush("AccentSoftBrush", Windows.UI.Color.FromArgb(26, 77, 107, 254));
+                VerdictBox.Background = Brush("SuccessSoftBrush", Windows.UI.Color.FromArgb(24, 46, 158, 91));
                 VerdictIcon.Glyph = "\uE73E";
                 VerdictIcon.Foreground = Brush("SuccessBrush", Windows.UI.Color.FromArgb(255, 46, 158, 91));
                 VerdictText.Text = Localization.T("detect.allgood");
                 return;
             }
 
-            VerdictBox.Background = Brush("AccentSoftBrush", Windows.UI.Color.FromArgb(26, 77, 107, 254));
+            VerdictBox.Background = Brush("WarningSoftBrush", Windows.UI.Color.FromArgb(30, 217, 138, 0));
             VerdictIcon.Glyph = "\uE7BA";
             VerdictIcon.Foreground = Brush("WarningBrush", Windows.UI.Color.FromArgb(255, 217, 138, 0));
 

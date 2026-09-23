@@ -91,10 +91,10 @@ namespace DshInstaller.Shared.Install
         /// <summary>把 GitHub release 资产地址包一层国内加速前缀。</summary>
         public static List<string> MirrorizeAsset(string assetUrl, string preference)
         {
-            List<string> urls = new List<string>();
+            List<string> direct = new List<string>();
             if (string.IsNullOrEmpty(assetUrl))
             {
-                return urls;
+                return direct;
             }
 
             // 加速前缀只对 GitHub 地址有意义。
@@ -106,43 +106,11 @@ namespace DshInstaller.Shared.Install
 
             if (!isGitHub)
             {
-                urls.Add(assetUrl);
-                return urls;
+                direct.Add(assetUrl);
+                return direct;
             }
 
-            // 顺序按**最近一次实测**(2026-09-19 晚,虚拟机,同一张网)排:
-            //   gh-proxy.com  173 KB/s  ← 最快,放第一
-            //   ghproxy.net    44 KB/s
-            //   ghfast.top / ghproxy.homeboyc.cn / github.akams.cn / ghp.ci / moeyy.cn
-            //                           全部超时 —— 已经剔掉,留着只会让测速阶段白等
-            // 另外现在**开下前会实测排序**(SpeedProbe),所以这份顺序主要是
-            // "测速失败时的兜底顺序",排第一的那个必须是最靠谱的。
-            string[] proxies = new string[]
-            {
-                "https://gh-proxy.com/",
-                "https://ghproxy.net/",
-                "https://ghfast.top/",
-            };
-
-            if (string.Equals(preference, MirrorSource.China, StringComparison.OrdinalIgnoreCase))
-            {
-                for (int i = 0; i < proxies.Length; i++)
-                {
-                    urls.Add(proxies[i] + assetUrl);
-                }
-
-                urls.Add(assetUrl);
-            }
-            else
-            {
-                urls.Add(assetUrl);
-                for (int i = 0; i < proxies.Length; i++)
-                {
-                    urls.Add(proxies[i] + assetUrl);
-                }
-            }
-
-            return urls;
+            return MirrorSource.GitHubProxyUrls(assetUrl, preference);
         }
 
         /// <summary>

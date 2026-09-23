@@ -100,7 +100,7 @@ namespace DshInstaller.Pages
         {
             Scaffold.Title = Localization.T("confirm.title");
             Scaffold.Subtitle = Localization.T("confirm.desc");
-            Scaffold.SetStep(5);
+            Scaffold.SetStep(7);
         }
 
         private void OnLoaded(object sender, RoutedEventArgs e)
@@ -126,12 +126,14 @@ namespace DshInstaller.Pages
                     : (Localization.IsChinese ? "官方源" : "Official source"));
 
             List<string> extras = new List<string>();
-            if (session.InstallGit)
+            bool recommendedPlugins =
+                session.RecommendedPluginSpecs.Count > 0;
+            if (session.InstallGit || recommendedPlugins)
             {
                 extras.Add("Git");
             }
 
-            if (session.InstallPnpm)
+            if (session.InstallPnpm || recommendedPlugins)
             {
                 extras.Add("pnpm");
             }
@@ -145,6 +147,13 @@ namespace DshInstaller.Pages
                 extras.Count == 0
                     ? (Localization.IsChinese ? "无" : "None")
                     : string.Join(", ", extras.ToArray()));
+            Add(Localization.IsChinese ? "推荐插件" : "Recommended plug-ins",
+                session.RecommendedPluginSpecs.Count == 0
+                    ? (Localization.IsChinese ? "跳过" : "Skipped")
+                    : (Localization.IsChinese ? "安装 "
+                        : "Install ")
+                        + session.RecommendedPluginSpecs.Count
+                        + (Localization.IsChinese ? " 个" : " item(s)"));
 
             Add(Localization.IsChinese ? "DSH 本体" : "DSH core", session.DshRoot);
             Add(Localization.IsChinese ? "启动器" : "Launcher", session.LauncherRoot);

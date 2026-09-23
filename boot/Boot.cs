@@ -751,6 +751,7 @@ internal static class Boot
             long chunk = total / Segments;
             long[] received = new long[Segments];
             string[] parts = new string[Segments];
+            bool[] complete = new bool[Segments];
             Thread[] workers = new Thread[Segments];
 
             for (int i = 0; i < Segments; i++)
@@ -765,7 +766,13 @@ internal static class Boot
 
                 workers[i] = new Thread(delegate()
                 {
-                    FetchRange(url, from, to, parts[index], received, index);
+                    complete[index] = FetchRange(
+                        url,
+                        from,
+                        to,
+                        parts[index],
+                        received,
+                        index);
                 });
 
                 workers[i].IsBackground = true;
@@ -776,41 +783,80 @@ internal static class Boot
             double lastSeconds = 0;
             long lastDone = 0;
 
-            for (int i = 0; i < Segments; i++)
-            {
-                while (workers[i].IsAlive)
-                {
-                    Application.DoEvents();
-                    Thread.Sleep(60);
-
-                    long done = 0;
-                    for (int k = 0; k < Segments; k++)
-                    {
-                        done += Interlocked.Read(ref received[k]);
-                    }
-
-                    double elapsed = clock.Elapsed.TotalSeconds;
-                    if (elapsed - lastSeconds >= 0.4)
-                    {
-                        double speed = (done - lastDone) / (elapsed - lastSeconds);
-                        lastSeconds = elapsed;
-                        lastDone = done;
-
-                        plan.Report(done / (double)total);
-                        window.SetProgress(plan.Fraction);
-
-                        // 文案**统一走 DescribeDownload** —— 和单连接那条路一字不差
-                        // (已下载 X / Y · 速度 · 预计还需…)。以前分段这条自己拼了一版
-                        // "下载中 · 速度 · X / Y",同一个窗口里两种格式来回跳(用户点名过)。
-                        window.SetDetail(DescribeDownload(speed, done, total));
-                    }
-                }
-            }
+            PumpRangeWorkers(
+                window,
+                plan,
+                workers,
+                received,
+                Segments,
+                total,
+                clock,
+                ref lastSeconds,
+                ref lastDone);
 
             long finished = 0;
             for (int i = 0; i < Segments; i++)
             {
                 finished += Interlocked.Read(ref received[i]);
+            }
+
+            // aka.ms 这类 CDN 会限制同一客户端的并发 Range 数。首轮 8 条里
+            // 经常只放行 5 条,其余 3 条在重试窗口内一直被挤掉;等首轮连接都
+            // 结束后再补一轮,失败的 3 段通常就能正常拉完,不必回落单连接。
+            for (int pass = 1; pass <= 2 && finished < total; pass++)
+            {
+                Log(
+                    "分段下载第 "
+                    + pass
+                    + " 轮补齐:已完成 "
+                    + finished
+                    + "/"
+                    + total);
+
+                Thread[] retryWorkers = new Thread[Segments];
+                for (int i = 0; i < Segments; i++)
+                {
+                    if (complete[i])
+                    {
+                        continue;
+                    }
+
+                    int index = i;
+                    long from = i * chunk;
+                    long to = (i == Segments - 1)
+                        ? total - 1
+                        : (from + chunk - 1);
+
+                    retryWorkers[i] = new Thread(delegate()
+                    {
+                        complete[index] = FetchRange(
+                            url,
+                            from,
+                            to,
+                            parts[index],
+                            received,
+                            index);
+                    });
+                    retryWorkers[i].IsBackground = true;
+                    retryWorkers[i].Start();
+                }
+
+                PumpRangeWorkers(
+                    window,
+                    plan,
+                    retryWorkers,
+                    received,
+                    Segments,
+                    total,
+                    clock,
+                    ref lastSeconds,
+                    ref lastDone);
+
+                finished = 0;
+                for (int i = 0; i < Segments; i++)
+                {
+                    finished += Interlocked.Read(ref received[i]);
+                }
             }
 
             if (finished < total)
@@ -853,6 +899,52 @@ internal static class Boot
         {
             Log("分段下载出错,回落单连接:" + exception.Message);
             return false;
+        }
+    }
+
+    private static void PumpRangeWorkers(
+        ProgressWindow window,
+        ProgressPlan plan,
+        Thread[] workers,
+        long[] received,
+        int segmentCount,
+        long total,
+        Stopwatch clock,
+        ref double lastSeconds,
+        ref long lastDone)
+    {
+        for (int i = 0; i < segmentCount; i++)
+        {
+            Thread worker = workers[i];
+            if (worker == null)
+            {
+                continue;
+            }
+
+            while (worker.IsAlive)
+            {
+                Application.DoEvents();
+                Thread.Sleep(60);
+
+                long done = 0;
+                for (int k = 0; k < segmentCount; k++)
+                {
+                    done += Interlocked.Read(ref received[k]);
+                }
+
+                double elapsed = clock.Elapsed.TotalSeconds;
+                if (elapsed - lastSeconds >= 0.4)
+                {
+                    double speed = (done - lastDone) / (elapsed - lastSeconds);
+                    lastSeconds = elapsed;
+                    lastDone = done;
+
+                    plan.Report(done / (double)total);
+                    window.SetProgress(plan.Fraction);
+
+                    window.SetDetail(DescribeDownload(speed, done, total));
+                }
+            }
         }
     }
 
@@ -920,16 +1012,20 @@ internal static class Boot
     }
 
     /// <summary>拉一段。写不满就把它记的字节数退回去,免得进度虚高。</summary>
-    private static void FetchRange(string url, long start, long end, string partPath, long[] received, int index)
+    private static bool FetchRange(string url, long start, long end, string partPath, long[] received, int index)
     {
-        for (int attempt = 1; attempt <= 2; attempt++)
+        string lastError = String.Empty;
+
+        for (int attempt = 1; attempt <= 3; attempt++)
         {
+            long counted = 0;
             try
             {
                 HttpWebRequest request = (HttpWebRequest)WebRequest.Create(url);
                 request.UserAgent = "DSH-Installer-Boot";
                 request.Timeout = 60000;
                 request.ReadWriteTimeout = 60000;
+                request.KeepAlive = false;
                 request.AddRange(start, end);
 
                 using (HttpWebResponse response = (HttpWebResponse)request.GetResponse())
@@ -950,24 +1046,41 @@ internal static class Boot
 
                         local.Write(buffer, 0, read);
                         written += read;
+                        counted += read;
                         Interlocked.Add(ref received[index], read);
                     }
 
                     if (written >= expected)
                     {
-                        return;
+                        return true;
                     }
 
                     Interlocked.Add(ref received[index], -written);
+                    counted = 0;
+                    lastError = "只收到 " + written + "/" + expected + " 字节";
                 }
             }
-            catch
+            catch (Exception exception)
             {
-                // 换下一轮重试(同一个源,分段本来就不换源)
+                lastError = exception.Message;
             }
 
-            Thread.Sleep(500);
+            if (counted > 0)
+            {
+                Interlocked.Add(ref received[index], -counted);
+            }
+
+            Thread.Sleep(500 * attempt);
         }
+
+        Log(
+            "分段 "
+            + (index + 1)
+            + "/"
+            + received.Length
+            + " 下载失败:"
+            + lastError);
+        return false;
     }
 
     private static void CleanParts(string[] parts)
@@ -1562,8 +1675,10 @@ internal static class Boot
 
         using (FileStream file = new FileStream(selfPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
         {
-            long zipStart = FindZipStart(file);
+            long zipEnd;
+            long zipStart = FindZipStart(file, out zipEnd);
             Log("zipStart = " + zipStart);
+            Log("zipEnd = " + zipEnd);
             if (zipStart < 0)
             {
                 return false;
@@ -1577,10 +1692,17 @@ internal static class Boot
             using (FileStream zipOut = new FileStream(tempZip, FileMode.Create, FileAccess.Write))
             {
                 byte[] buffer = new byte[1024 * 256];
-                int read;
-                while ((read = file.Read(buffer, 0, buffer.Length)) > 0)
+                long remaining = zipEnd - zipStart;
+                while (remaining > 0)
                 {
+                    int wanted = (int)Math.Min(buffer.Length, remaining);
+                    int read = file.Read(buffer, 0, wanted);
+                    if (read <= 0)
+                    {
+                        break;
+                    }
                     zipOut.Write(buffer, 0, read);
+                    remaining -= read;
                 }
             }
 
@@ -1652,13 +1774,15 @@ internal static class Boot
     /// 在文件末尾附近找 zip 的结束记录(EOCD),据此算出 zip 数据的起始偏移。
     /// 附加式自解压就是这么定位的:EOCD 固定签名 0x06054B50,注释最长 65535 字节。
     /// </summary>
-    private static long FindZipStart(FileStream file)
+    private static long FindZipStart(FileStream file, out long zipEnd)
     {
         const int MaxComment = 65535;
         const int EocdMinSize = 22;
+        const int MaxAuthenticodeTable = 1024 * 1024;
 
+        zipEnd = -1;
         long length = file.Length;
-        int window = (int)Math.Min(length, MaxComment + EocdMinSize + 1024);
+        int window = (int)Math.Min(length, MaxComment + EocdMinSize + MaxAuthenticodeTable);
 
         byte[] buffer = new byte[window];
         file.Seek(length - window, SeekOrigin.Begin);
@@ -1686,16 +1810,37 @@ internal static class Boot
             long centralOffset = BitConverter.ToUInt32(buffer, i + 16);
             int commentLength = BitConverter.ToUInt16(buffer, i + 20);
 
-            if (i + EocdMinSize + commentLength != total)
+            if (i + EocdMinSize + commentLength > total)
             {
                 continue;
             }
 
-            long zipStart = length - centralSize - centralOffset - EocdMinSize - commentLength;
-            if (zipStart >= 0 && zipStart < length)
+            long eocdAbsolute = length - total + i;
+            long zipStart = eocdAbsolute - centralSize - centralOffset;
+            long candidateEnd = eocdAbsolute + EocdMinSize + commentLength;
+
+            if (zipStart < 0 || zipStart >= length || candidateEnd > length || candidateEnd <= zipStart)
             {
-                return zipStart;
+                continue;
             }
+
+            // Reject EOCD-like byte sequences inside the Authenticode certificate.
+            // A real appended ZIP starts with a local file header.
+            long savedPosition = file.Position;
+            file.Seek(zipStart, SeekOrigin.Begin);
+            int b0 = file.ReadByte();
+            int b1 = file.ReadByte();
+            int b2 = file.ReadByte();
+            int b3 = file.ReadByte();
+            file.Seek(savedPosition, SeekOrigin.Begin);
+
+            if (b0 != 0x50 || b1 != 0x4B || b2 != 0x03 || b3 != 0x04)
+            {
+                continue;
+            }
+
+            zipEnd = candidateEnd;
+            return zipStart;
         }
 
         return -1;

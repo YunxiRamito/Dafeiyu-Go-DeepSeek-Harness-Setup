@@ -37,6 +37,9 @@ namespace DshInstaller
                 InstallGit = session.InstallGit,
                 InstallPnpm = session.InstallPnpm,
                 InstallPython = session.InstallPython,
+                RecommendedPluginSpecs =
+                    new System.Collections.Generic.List<string>(
+                        session.RecommendedPluginSpecs),
                 CreateDesktopShortcut = session.CreateDesktopShortcut,
                 CreateStartMenuShortcut = session.CreateStartMenuShortcut,
                 EnableAutostart = session.EnableAutostart,

@@ -5,7 +5,9 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     Background="Transparent">
 
-    <Grid Padding="36,10,36,18">
+    <Grid
+        Padding="28,16,28,12"
+        HorizontalAlignment="Stretch">
         <Grid.RowDefinitions>
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
@@ -37,10 +39,10 @@
 
         <!-- 说明卡片 -->
         <Border Grid.Row="1" CornerRadius="{ThemeResource CardCornerRadius}"
-                Background="{ThemeResource CardBackgroundBrush}"
+                Background="{ThemeResource CardBackgroundSubtleBrush}"
                 BorderBrush="{ThemeResource CardBorderBrush}"
                 BorderThickness="1"
-                Padding="20,14">
+                Padding="18,14">
             <StackPanel Spacing="8">
                 <TextBlock x:Name="TermsText" FontSize="12"
                            Foreground="{ThemeResource TertiaryTextBrush}" />

@@ -72,6 +72,25 @@ namespace DshInstaller.Shared.Install
             Func<bool> cancellation,
             Action<string> notice)
         {
+            return TryDownload(
+                urls,
+                targetPath,
+                progress,
+                cancellation,
+                notice,
+                MinimumSize,
+                SegmentCount);
+        }
+
+        public static bool TryDownload(
+            IList<string> urls,
+            string targetPath,
+            Action<DownloadProgress> progress,
+            Func<bool> cancellation,
+            Action<string> notice,
+            long minimumSize,
+            int segmentCount)
+        {
             try
             {
                 if (urls == null || urls.Count == 0 || string.IsNullOrEmpty(targetPath))
@@ -90,8 +109,13 @@ namespace DshInstaller.Shared.Install
                 // 界面会停在上一句"测速完成。"上(实测被当成卡死)。
                 Notice(notice, SharedText.T("正在连接下载源…", "Connecting to the download source…"));
 
+                if (segmentCount < 2)
+                {
+                    segmentCount = 2;
+                }
+
                 long total = ProbeLength(urls[0]);
-                if (total < MinimumSize)
+                if (total < minimumSize)
                 {
                     if (total > 0)
                     {
@@ -109,14 +133,14 @@ namespace DshInstaller.Shared.Install
                     Directory.CreateDirectory(directory);
                 }
 
-                long chunk = total / SegmentCount;
-                long[] received = new long[SegmentCount];
-                string[] parts = new string[SegmentCount];
+                long chunk = total / segmentCount;
+                long[] received = new long[segmentCount];
+                string[] parts = new string[segmentCount];
 
-                for (int i = 0; i < SegmentCount; i++)
+                for (int i = 0; i < segmentCount; i++)
                 {
                     long start = i * chunk;
-                    long end = (i == SegmentCount - 1) ? total - 1 : (start + chunk - 1);
+                    long end = (i == segmentCount - 1) ? total - 1 : (start + chunk - 1);
 
                     string part = targetPath + ".seg" + i.ToString();
                     parts[i] = part;
@@ -168,7 +192,7 @@ namespace DshInstaller.Shared.Install
                     }
 
                     long done = 0;
-                    for (int i = 0; i < SegmentCount; i++)
+                    for (int i = 0; i < segmentCount; i++)
                     {
                         done += Interlocked.Read(ref received[i]);
                     }
@@ -265,7 +289,7 @@ namespace DshInstaller.Shared.Install
                 using (FileStream output = new FileStream(targetPath, FileMode.Create, FileAccess.Write,
                     FileShare.None, 256 * 1024))
                 {
-                    for (int i = 0; i < SegmentCount; i++)
+                    for (int i = 0; i < segmentCount; i++)
                     {
                         if (!File.Exists(parts[i]))
                         {
@@ -286,7 +310,7 @@ namespace DshInstaller.Shared.Install
                     return false;
                 }
 
-                for (int i = 0; i < SegmentCount; i++)
+                for (int i = 0; i < segmentCount; i++)
                 {
                     try
                     {

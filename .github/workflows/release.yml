@@ -19,6 +19,7 @@ on:
   workflow_dispatch:
 
 permissions:
+  actions: read
   contents: write
 
 jobs:
@@ -53,32 +54,138 @@ jobs:
           "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           "setup=DSH-Installer-Setup.exe" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
-      - name: 打包(-NoDesktop:CI 上没有桌面可拷)
+      - name: 校验 SignPath 配置
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          SIGNPATH_API_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
+          SIGNPATH_ORGANIZATION_ID: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          SIGNPATH_PROJECT_SLUG: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          SIGNPATH_SIGNING_POLICY_SLUG: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
+          SIGNPATH_INNER_ARTIFACT_CONFIGURATION_SLUG: ${{ vars.SIGNPATH_INNER_ARTIFACT_CONFIGURATION_SLUG }}
+          SIGNPATH_FINAL_ARTIFACT_CONFIGURATION_SLUG: ${{ vars.SIGNPATH_FINAL_ARTIFACT_CONFIGURATION_SLUG }}
+        run: |
+          $required = [ordered]@{
+            SIGNPATH_API_TOKEN = $env:SIGNPATH_API_TOKEN
+            SIGNPATH_ORGANIZATION_ID = $env:SIGNPATH_ORGANIZATION_ID
+            SIGNPATH_PROJECT_SLUG = $env:SIGNPATH_PROJECT_SLUG
+            SIGNPATH_SIGNING_POLICY_SLUG = $env:SIGNPATH_SIGNING_POLICY_SLUG
+            SIGNPATH_INNER_ARTIFACT_CONFIGURATION_SLUG = $env:SIGNPATH_INNER_ARTIFACT_CONFIGURATION_SLUG
+            SIGNPATH_FINAL_ARTIFACT_CONFIGURATION_SLUG = $env:SIGNPATH_FINAL_ARTIFACT_CONFIGURATION_SLUG
+          }
+          $missing = @($required.GetEnumerator() | Where-Object { [string]::IsNullOrWhiteSpace([string]$_.Value) } | ForEach-Object { $_.Key })
+          if ($missing.Count -gt 0) {
+            throw "缺少 SignPath 配置: $($missing -join ', ')。请先按 SIGNING.md 完成仓库变量和 secret。"
+          }
+
+      - name: 构建待签名 payload(tag)
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: .\pack-release.ps1 -Stage PrepareInner -NoDesktop
+
+      - name: 构建未签名安装包(手动试跑)
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
         shell: pwsh
         run: .\pack-release.ps1 -NoDesktop
+
+      - name: 上传待签名 payload
+        if: startsWith(github.ref, 'refs/tags/v')
+        id: upload_inner
+        uses: actions/upload-artifact@v4
+        with:
+          name: DSH-Installer-Inner-Unsigned-${{ github.run_id }}-${{ github.run_attempt }}
+          path: dist/selfcontained/**
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: SignPath 签名内部安装器文件
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: signpath/github-action-submit-signing-request@v3
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
+          artifact-configuration-slug: ${{ vars.SIGNPATH_INNER_ARTIFACT_CONFIGURATION_SLUG }}
+          github-artifact-id: ${{ steps.upload_inner.outputs.artifact-id }}
+          output-artifact-directory: signed-inner
+          wait-for-completion: true
+
+      - name: 用已签名 payload 组装 Setup
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: .\pack-release.ps1 -Stage Compose -SignedPayloadDirectory signed-inner -RequireSignedPayload -NoDesktop
+
+      - name: 上传最终 Setup 给 SignPath
+        if: startsWith(github.ref, 'refs/tags/v')
+        id: upload_final
+        uses: actions/upload-artifact@v4
+        with:
+          name: DSH-Installer-Setup-Unsigned-${{ github.run_id }}-${{ github.run_attempt }}
+          path: dist/DSH-Installer-Setup.exe
+          archive: false
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: SignPath 签名最终 Setup
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: signpath/github-action-submit-signing-request@v3
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
+          artifact-configuration-slug: ${{ vars.SIGNPATH_FINAL_ARTIFACT_CONFIGURATION_SLUG }}
+          github-artifact-id: ${{ steps.upload_final.outputs.artifact-id }}
+          output-artifact-directory: signed
+          skip-decompress: true
+          wait-for-completion: true
 
       - name: 校验产物并算哈希
         id: pack
         shell: pwsh
         run: |
-          $exe = 'dist\DSH-Installer-Setup.exe'
-          if (-not (Test-Path $exe)) { throw "没有产出 $exe" }
+          $isTagBuild = '${{ github.ref }}' -like 'refs/tags/v*'
+          $exe = if ($isTagBuild) {
+            'dist\signed\DSH-Installer-Setup.exe'
+          } else {
+            'dist\DSH-Installer-Setup.exe'
+          }
+          if (-not (Test-Path -LiteralPath $exe)) { throw "没有产出 $exe" }
+
+          if ($isTagBuild) {
+            $signature = Get-AuthenticodeSignature -LiteralPath $exe
+            if ($signature.Status -ne 'Valid') {
+              throw "最终安装包签名无效: $($signature.Status)"
+            }
+            Write-Host "签名发布者: $($signature.SignerCertificate.Subject)"
+          }
 
           # 体积自检:框架依赖 + 按需下运行库,应该在十几 MB。
           # 要是打出自包含那种上百 MB 的包,说明自包含开关又被人打开了。
-          $mb = [math]::Round((Get-Item $exe).Length / 1MB, 1)
+          $mb = [math]::Round((Get-Item -LiteralPath $exe).Length / 1MB, 1)
           Write-Host "体积 $mb MB"
           if ($mb -gt 40) { throw "包有 $mb MB,像是又把运行库打进去了" }
 
-          $hash = (Get-FileHash $exe -Algorithm SHA256).Hash.ToLower()
+          $hash = (Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash.ToLower()
           Write-Host "SHA256: $hash"
+          "exe=$exe" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           "sha256=$hash" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
-      - name: 存成构建产物(手动试跑时也能下载)
+      - name: 存未签名构建产物(手动试跑)
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
         uses: actions/upload-artifact@v4
         with:
-          name: DSH-Installer-Setup
-          path: dist/DSH-Installer-Setup.exe
+          name: DSH-Installer-Setup-Unsigned
+          path: ${{ steps.pack.outputs.exe }}
+          if-no-files-found: error
+
+      - name: 存已签名构建产物
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: actions/upload-artifact@v4
+        with:
+          name: DSH-Installer-Setup-Signed
+          path: ${{ steps.pack.outputs.exe }}
           if-no-files-found: error
 
       # 只有打 tag 才发 Release。
@@ -88,15 +195,14 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/DSH-Installer-Setup.exe
+          files: ${{ steps.pack.outputs.exe }}
           generate_release_notes: true
           body: |
-            大肥鱼Go单文件安装包 `DSH-Installer-Setup.exe`(约 11 MB)。
+            大肥鱼Go已签名单文件安装包 `DSH-Installer-Setup.exe`(约 11 MB)。
 
             双击即用:安装器会先检查 .NET 8 桌面运行时与 Windows App Runtime,
             缺哪个下哪个,装好之后再拉起向导。
 
             SHA256: `${{ steps.pack.outputs.sha256 }}`
 
-            **未做代码签名**,首次运行会有 SmartScreen 提示 ——
-            点「更多信息」→「仍要运行」即可,详见 README。
+            Windows 发布者: SignPath Foundation

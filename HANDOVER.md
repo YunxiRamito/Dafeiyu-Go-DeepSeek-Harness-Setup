@@ -1,11 +1,40 @@
 # 交接:大肥鱼Go / Dafeiyu-Go
 
-> 给下一个接手的人(或下一个 AI)。当前发布版本为 `1.4.9`，启动器与安装器
+> 给下一个接手的人(或下一个 AI)。当前发布版本为 `1.4.9`，工作版本为 `1.4.9.1`，启动器与安装器
 > 已改为同版本同步发布。第一入口请先读父级
 > `G:\DeepSeek DSH\DSH Works\Project\Dafeiyu-Go\HANDOVER.md`，再读本文件、
 > `STATUS.md`、`RELEASE.md` 和 `TRANSITION.md`。
 
-最后更新:2026-09-22
+最后更新:2026-09-23
+
+---
+
+## 1.4.9.1 本轮交接（2026-09-23）
+
+本轮已经完成并在本机编译通过：
+
+- 新增推荐插件页并读取 `featured-plugins.json`。
+- 推荐插件改为和启动器一致的 GitHub tarball 下载、解压、写入 `link:`、执行 `pnpm install`。
+- 插件下载使用 4 线程；Git、Python、pnpm、Node 等其他大文件使用 8 线程。
+- GitHub 镜像池统一为 `gh-proxy.com`、`ghproxy.net`、`ghfast.top`。
+- 大陆 CDN 与官方下载严格分流，不跨阵营回退。
+- 新增欢迎页后的独立下载源页。
+- 取消安装后会使用全新的回滚 token，不再因原 token 已取消而跳过所有清理步骤。
+- 安装开始前记录三个顶层目录的初始存在状态，避免 Node 先创建父目录导致 DSH 根目录漏记。
+- `ProcessRunner` 支持取消令牌，pnpm/git 子进程会随安装取消而结束。
+- 卸载检查新增 `ComponentsRoot`，并保留对 `%LOCALAPPDATA%\DeepSeekHarness\Boot` 的清理。
+
+当前阻塞：
+
+- SignPath 尚未配置。安装器仓库没有 `SIGNPATH_API_TOKEN` secret，
+  也没有五个 SignPath repository variables，tag 发布会直接失败。
+- 不应绕过签名发布正式 `v1.4.9.1`。
+
+下一步：
+
+1. 配置 SignPath 仓库变量和 secret。
+2. 在虚拟机完整验证安装、取消回滚、推荐插件 4 线程下载和卸载。
+3. 推送 `v1.4.9.1` tag，等待签名的 Setup 和启动器 ZIP 发布完成。
 
 > **下个大版本硬要求**：安装器改为静态或自包含编译，不再依赖目标机预装
 > .NET 8 和 Windows App Runtime；安装器、卸载器与辅助文件放入

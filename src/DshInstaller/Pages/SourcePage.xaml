@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="DshInstaller.Pages.SourcePage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:DshInstaller.Controls"
+    Background="Transparent">
+
+    <controls:PageScaffold x:Name="Scaffold" Title="" Subtitle="">
+        <StackPanel Spacing="12">
+            <StackPanel x:Name="CardsHost" Spacing="12" />
+            <TextBlock
+                x:Name="Footnote"
+                Margin="4,2,4,0"
+                FontSize="11.5"
+                Foreground="{ThemeResource SecondaryTextBrush}"
+                TextWrapping="Wrap" />
+        </StackPanel>
+    </controls:PageScaffold>
+</Page>

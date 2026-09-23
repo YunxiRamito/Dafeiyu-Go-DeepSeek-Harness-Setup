@@ -74,7 +74,7 @@ namespace DshInstaller.Pages
         {
             Scaffold.Title = Localization.T("scope.title");
             Scaffold.Subtitle = Localization.T("scope.desc");
-            Scaffold.SetStep(0);
+            Scaffold.SetStep(1);
 
             _userCard.CardTitle = Localization.T("scope.user");
             _userCard.Description = Localization.T("scope.user.desc");

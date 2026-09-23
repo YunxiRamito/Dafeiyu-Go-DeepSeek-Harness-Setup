@@ -81,7 +81,7 @@ namespace DshInstaller.Pages
             }
             else
             {
-                Scaffold.SetStep(6);
+                Scaffold.SetStep(8);
             }
 
             LogExpander.Header = Localization.T("progress.showlog");
@@ -115,6 +115,7 @@ namespace DshInstaller.Pages
                 delegate(string detail, double percent) { });
 
             _context = context;
+            RecordInitiallyCreatedDirectories(options, context);
             _runner = new InstallRunner(plan, context);
 
             // 把外部命令的执行也送进日志抽屉 —— "执行了什么"用户看得见才放心
@@ -127,6 +128,51 @@ namespace DshInstaller.Pages
 
             BuildRows(plan);
             _ = RunAsync();
+        }
+
+        /// <summary>
+        /// 在第一个安装步骤开始前记录顶层目录是否存在。
+        ///
+        /// 不能等各步骤自己去记：安装 Node 时会先创建
+        /// &lt;DSH 根&gt;\components\node，父目录因此提前存在；等 DSH 步骤再检查
+        /// 根目录时就会误判成"原本已有"，取消回滚便只删 components/launcher，
+        /// 把根目录和 node_modules 留在磁盘上。
+        /// </summary>
+        private static void RecordInitiallyCreatedDirectories(
+            InstallOptions options,
+            InstallContext context)
+        {
+            if (options == null
+                || context == null
+                || options.DryRun)
+            {
+                return;
+            }
+
+            NoteIfMissing(options.DshRoot, context);
+            NoteIfMissing(options.LauncherRoot, context);
+            NoteIfMissing(options.ComponentsRoot, context);
+        }
+
+        private static void NoteIfMissing(
+            string directory,
+            InstallContext context)
+        {
+            if (String.IsNullOrWhiteSpace(directory))
+            {
+                return;
+            }
+
+            try
+            {
+                if (!Directory.Exists(directory))
+                {
+                    context.NoteCreatedDirectory(directory);
+                }
+            }
+            catch
+            {
+            }
         }
 
         /// <summary>把界面上的选择翻译成后端认识的选项。</summary>
@@ -146,6 +192,9 @@ namespace DshInstaller.Pages
                 InstallGit = session.InstallGit,
                 InstallPnpm = session.InstallPnpm,
                 InstallPython = session.InstallPython,
+                RecommendedPluginSpecs =
+                    new System.Collections.Generic.List<string>(
+                        session.RecommendedPluginSpecs),
                 CreateDesktopShortcut = session.CreateDesktopShortcut,
                 EnableAutostart = session.EnableAutostart,
                 LaunchAfterwards = session.LaunchAfterwards,
@@ -551,44 +600,55 @@ namespace DshInstaller.Pages
                 ComponentsRoot = _options.ComponentsRoot ?? string.Empty,
             };
 
-            InstallContext rollbackContext = new InstallContext(
-                rollbackOptions, _cancellation.Token, AppendLog,
-                delegate(string detail, double percent) { });
-
-            InstallRunner runner = new InstallRunner(UninstallSteps.BuildPlan(rollback), rollbackContext);
-
-            int total = runner.StepCount;
-            runner.StepStateChanged += delegate(int i, InstallStepState state, string message)
-            {
-                _dispatcher.TryEnqueue(delegate
-                {
-                    if (state == InstallStepState.Running && i < RowsHost.Children.Count)
-                    {
-                        RowsHost.Children.Clear();
-                    }
-                });
-            };
-
-            runner.StepDetail += delegate(int i, string detail, double percent)
-            {
-                _dispatcher.TryEnqueue(delegate
-                {
-                    SetCurrent(Localization.T("rollback.running"), detail ?? string.Empty);
-                    if (percent >= 0 && total > 0)
-                    {
-                        SetPercent((i + percent / 100.0) / total * 100);
-                    }
-                });
-            };
-
             InstallReport rollbackReport = null;
-            try
+            // 回滚必须用**全新的令牌**。安装取消后 _cancellation.Token 已经是取消态，
+            // 以前直接把它交给回滚执行器，执行器第一步就判定"已取消"，七个清理步骤
+            // 一个都不跑，却在界面上打印"回滚完成"。
+            using (CancellationTokenSource rollbackCancellation =
+                new CancellationTokenSource())
             {
-                rollbackReport = await Task.Run(delegate { return runner.RunAsync(); });
-            }
-            catch (Exception exception)
-            {
-                AppendLog(Localization.T("rollback.failed") + " " + exception.Message);
+                InstallContext rollbackContext = new InstallContext(
+                    rollbackOptions,
+                    rollbackCancellation.Token,
+                    AppendLog,
+                    delegate(string detail, double percent) { });
+
+                InstallRunner runner = new InstallRunner(
+                    UninstallSteps.BuildPlan(rollback),
+                    rollbackContext);
+
+                int total = runner.StepCount;
+                runner.StepStateChanged += delegate(int i, InstallStepState state, string message)
+                {
+                    _dispatcher.TryEnqueue(delegate
+                    {
+                        if (state == InstallStepState.Running && i < RowsHost.Children.Count)
+                        {
+                            RowsHost.Children.Clear();
+                        }
+                    });
+                };
+
+                runner.StepDetail += delegate(int i, string detail, double percent)
+                {
+                    _dispatcher.TryEnqueue(delegate
+                    {
+                        SetCurrent(Localization.T("rollback.running"), detail ?? string.Empty);
+                        if (percent >= 0 && total > 0)
+                        {
+                            SetPercent((i + percent / 100.0) / total * 100);
+                        }
+                    });
+                };
+
+                try
+                {
+                    rollbackReport = await Task.Run(delegate { return runner.RunAsync(); });
+                }
+                catch (Exception exception)
+                {
+                    AppendLog(Localization.T("rollback.failed") + " " + exception.Message);
+                }
             }
 
             // 记下撤销了什么,失败页要显示给用户看("现在电脑是什么状态")

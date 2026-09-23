@@ -13,11 +13,13 @@
 
         <!-- ============ 浅色:白底黑字 ============ -->
         <ResourceDictionary x:Key="Light">
-            <Color x:Key="ShellBackgroundColor">#FFF6F6F7</Color>
+            <Color x:Key="ShellBackgroundColor">#DDF4F5F7</Color>
             <SolidColorBrush x:Key="ShellBackgroundBrush" Color="{StaticResource ShellBackgroundColor}" />
 
-            <SolidColorBrush x:Key="CardBackgroundBrush" Color="#FFFFFFFF" />
-            <SolidColorBrush x:Key="CardBorderBrush" Color="#16000000" />
+            <SolidColorBrush x:Key="CardBackgroundBrush" Color="#D9FFFFFF" />
+            <SolidColorBrush x:Key="CardBackgroundSubtleBrush" Color="#A8FFFFFF" />
+            <SolidColorBrush x:Key="CardBorderBrush" Color="#24000000" />
+            <SolidColorBrush x:Key="CardDividerBrush" Color="#14000000" />
 
             <SolidColorBrush x:Key="PrimaryTextBrush" Color="#FF0F0F10" />
             <SolidColorBrush x:Key="SecondaryTextBrush" Color="#FF5A5A5F" />
@@ -33,6 +35,9 @@
             <SolidColorBrush x:Key="SuccessBrush" Color="#FF2E9E5B" />
             <SolidColorBrush x:Key="WarningBrush" Color="#FFD98A00" />
             <SolidColorBrush x:Key="DangerBrush" Color="#FFD64545" />
+            <SolidColorBrush x:Key="SuccessSoftBrush" Color="#182E9E5B" />
+            <SolidColorBrush x:Key="WarningSoftBrush" Color="#1ED98A00" />
+            <SolidColorBrush x:Key="DangerSoftBrush" Color="#20D64545" />
 
             <SolidColorBrush x:Key="DividerBrush" Color="#14000000" />
             <SolidColorBrush x:Key="HoverBrush" Color="#0F000000" />
@@ -41,11 +46,13 @@
 
         <!-- ============ 深色:黑底白字(自动反转) ============ -->
         <ResourceDictionary x:Key="Dark">
-            <Color x:Key="ShellBackgroundColor">#FF131315</Color>
+            <Color x:Key="ShellBackgroundColor">#DD141416</Color>
             <SolidColorBrush x:Key="ShellBackgroundBrush" Color="{StaticResource ShellBackgroundColor}" />
 
-            <SolidColorBrush x:Key="CardBackgroundBrush" Color="#FF1C1C1F" />
-            <SolidColorBrush x:Key="CardBorderBrush" Color="#1AFFFFFF" />
+            <SolidColorBrush x:Key="CardBackgroundBrush" Color="#D9202024" />
+            <SolidColorBrush x:Key="CardBackgroundSubtleBrush" Color="#A81A1A1D" />
+            <SolidColorBrush x:Key="CardBorderBrush" Color="#26FFFFFF" />
+            <SolidColorBrush x:Key="CardDividerBrush" Color="#18FFFFFF" />
 
             <SolidColorBrush x:Key="PrimaryTextBrush" Color="#FFF5F5F7" />
             <SolidColorBrush x:Key="SecondaryTextBrush" Color="#FFA9A9B0" />
@@ -60,6 +67,9 @@
             <SolidColorBrush x:Key="SuccessBrush" Color="#FF4CC47C" />
             <SolidColorBrush x:Key="WarningBrush" Color="#FFE0A33A" />
             <SolidColorBrush x:Key="DangerBrush" Color="#FFE06A6A" />
+            <SolidColorBrush x:Key="SuccessSoftBrush" Color="#264CC47C" />
+            <SolidColorBrush x:Key="WarningSoftBrush" Color="#2EE0A33A" />
+            <SolidColorBrush x:Key="DangerSoftBrush" Color="#2EE06A6A" />
 
             <SolidColorBrush x:Key="DividerBrush" Color="#16FFFFFF" />
             <SolidColorBrush x:Key="HoverBrush" Color="#14FFFFFF" />
@@ -69,11 +79,11 @@
     </ResourceDictionary.ThemeDictionaries>
 
     <!-- ============ 与主题无关的度量 ============ -->
-    <CornerRadius x:Key="CardCornerRadius">10</CornerRadius>
+    <CornerRadius x:Key="CardCornerRadius">8</CornerRadius>
     <CornerRadius x:Key="ButtonCornerRadius">6</CornerRadius>
 
-    <x:Double x:Key="PageTitleFontSize">24</x:Double>
-    <x:Double x:Key="PageSubtitleFontSize">12.5</x:Double>
+    <x:Double x:Key="PageTitleFontSize">22</x:Double>
+    <x:Double x:Key="PageSubtitleFontSize">13</x:Double>
     <x:Double x:Key="WelcomeTitleFontSize">30</x:Double>
 
 </ResourceDictionary>

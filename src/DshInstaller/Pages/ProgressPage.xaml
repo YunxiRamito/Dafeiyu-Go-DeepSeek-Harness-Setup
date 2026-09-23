@@ -70,7 +70,12 @@
             <!-- 日志。取消键已挪到向导页脚右下角(见 IWizardPageFooterAction),
                  和"下一步"同位置,符合向导的整体布局。 -->
             <Expander x:Name="LogExpander" Grid.Row="2" HorizontalAlignment="Stretch"
-                      VerticalAlignment="Bottom">
+                      VerticalAlignment="Bottom"
+                      Padding="12"
+                      CornerRadius="{ThemeResource CardCornerRadius}"
+                      Background="{ThemeResource CardBackgroundSubtleBrush}"
+                      BorderBrush="{ThemeResource CardBorderBrush}"
+                      BorderThickness="1">
                 <ScrollViewer x:Name="LogScroller" Height="96" VerticalScrollBarVisibility="Auto">
                     <TextBlock x:Name="LogText" FontFamily="Consolas" FontSize="11"
                                TextWrapping="Wrap"
