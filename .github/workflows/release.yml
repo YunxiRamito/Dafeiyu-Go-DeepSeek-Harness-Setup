@@ -26,6 +26,10 @@ jobs:
   build:
     runs-on: windows-latest
 
+    env:
+      # 配好 SignPath 仓库变量才走签名;没配就出未签名包,而不是让 tag 构建直接失败。
+      SIGNING_ENABLED: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG != '' }}
+
     steps:
       - name: 检出
         uses: actions/checkout@v4
@@ -55,7 +59,7 @@ jobs:
           "setup=DSH-Installer-Setup.exe" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
       - name: 校验 SignPath 配置
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: startsWith(github.ref, 'refs/tags/v') && env.SIGNING_ENABLED == 'true'
         shell: pwsh
         env:
           SIGNPATH_API_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
@@ -79,17 +83,17 @@ jobs:
           }
 
       - name: 构建待签名 payload(tag)
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: startsWith(github.ref, 'refs/tags/v') && env.SIGNING_ENABLED == 'true'
         shell: pwsh
         run: .\pack-release.ps1 -Stage PrepareInner -NoDesktop
 
-      - name: 构建未签名安装包(手动试跑)
-        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+      - name: 构建未签名安装包(手动试跑 / 未配置签名)
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') || env.SIGNING_ENABLED != 'true' }}
         shell: pwsh
         run: .\pack-release.ps1 -NoDesktop
 
       - name: 上传待签名 payload
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: startsWith(github.ref, 'refs/tags/v') && env.SIGNING_ENABLED == 'true'
         id: upload_inner
         uses: actions/upload-artifact@v4
         with:
@@ -99,7 +103,7 @@ jobs:
           retention-days: 1
 
       - name: SignPath 签名内部安装器文件
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: startsWith(github.ref, 'refs/tags/v') && env.SIGNING_ENABLED == 'true'
         uses: signpath/github-action-submit-signing-request@v3
         with:
           api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
@@ -112,12 +116,12 @@ jobs:
           wait-for-completion: true
 
       - name: 用已签名 payload 组装 Setup
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: startsWith(github.ref, 'refs/tags/v') && env.SIGNING_ENABLED == 'true'
         shell: pwsh
         run: .\pack-release.ps1 -Stage Compose -SignedPayloadDirectory signed-inner -RequireSignedPayload -NoDesktop
 
       - name: 上传最终 Setup 给 SignPath
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: startsWith(github.ref, 'refs/tags/v') && env.SIGNING_ENABLED == 'true'
         id: upload_final
         uses: actions/upload-artifact@v4
         with:
@@ -128,7 +132,7 @@ jobs:
           retention-days: 1
 
       - name: SignPath 签名最终 Setup
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: startsWith(github.ref, 'refs/tags/v') && env.SIGNING_ENABLED == 'true'
         uses: signpath/github-action-submit-signing-request@v3
         with:
           api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
@@ -145,15 +149,15 @@ jobs:
         id: pack
         shell: pwsh
         run: |
-          $isTagBuild = '${{ github.ref }}' -like 'refs/tags/v*'
-          $exe = if ($isTagBuild) {
+          $signedBuild = ('${{ github.ref }}' -like 'refs/tags/v*') -and ('${{ env.SIGNING_ENABLED }}' -eq 'true')
+          $exe = if ($signedBuild) {
             'dist\signed\DSH-Installer-Setup.exe'
           } else {
             'dist\DSH-Installer-Setup.exe'
           }
           if (-not (Test-Path -LiteralPath $exe)) { throw "没有产出 $exe" }
 
-          if ($isTagBuild) {
+          if ($signedBuild) {
             $signature = Get-AuthenticodeSignature -LiteralPath $exe
             if ($signature.Status -ne 'Valid') {
               throw "最终安装包签名无效: $($signature.Status)"
@@ -172,8 +176,8 @@ jobs:
           "exe=$exe" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           "sha256=$hash" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
-      - name: 存未签名构建产物(手动试跑)
-        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+      - name: 存未签名构建产物(手动试跑 / 未配置签名)
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') || env.SIGNING_ENABLED != 'true' }}
         uses: actions/upload-artifact@v4
         with:
           name: DSH-Installer-Setup-Unsigned
@@ -181,7 +185,7 @@ jobs:
           if-no-files-found: error
 
       - name: 存已签名构建产物
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: startsWith(github.ref, 'refs/tags/v') && env.SIGNING_ENABLED == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: DSH-Installer-Setup-Signed
@@ -198,7 +202,7 @@ jobs:
           files: ${{ steps.pack.outputs.exe }}
           generate_release_notes: true
           body: |
-            大肥鱼Go已签名单文件安装包 `DSH-Installer-Setup.exe`(约 11 MB)。
+            大肥鱼Go${{ env.SIGNING_ENABLED == 'true' && '已签名' || '未签名' }}单文件安装包 `DSH-Installer-Setup.exe`(约 11 MB)。
 
             双击即用:安装器会先检查 .NET 8 桌面运行时与 Windows App Runtime,
             缺哪个下哪个,装好之后再拉起向导。
@@ -206,4 +210,4 @@ jobs:
             SHA256: `${{ steps.pack.outputs.sha256 }}`
 
             Free code signing provided by [SignPath.io](https://about.signpath.io),
-            certificate by [SignPath Foundation](https://signpath.org) —— Windows 发布者: SignPath Foundation
+            certificate by [SignPath Foundation](https://signpath.org) —— ${{ env.SIGNING_ENABLED == 'true' && 'Windows 发布者: SignPath Foundation' || '本版尚未签名(等待 SignPath Foundation 审批),首次运行会有 SmartScreen 提示' }}
