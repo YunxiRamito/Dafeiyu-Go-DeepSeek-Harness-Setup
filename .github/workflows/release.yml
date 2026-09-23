@@ -205,4 +205,5 @@ jobs:
 
             SHA256: `${{ steps.pack.outputs.sha256 }}`
 
-            Windows 发布者: SignPath Foundation
+            Free code signing provided by [SignPath.io](https://about.signpath.io),
+            certificate by [SignPath Foundation](https://signpath.org) —— Windows 发布者: SignPath Foundation
