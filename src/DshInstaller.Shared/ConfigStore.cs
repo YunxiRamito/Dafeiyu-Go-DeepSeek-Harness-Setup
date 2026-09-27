@@ -38,6 +38,14 @@ namespace DshInstaller.Shared
         /// </summary>
         public List<string> PathEntries { get; set; } = new List<string>();
         public List<string> Steps { get; set; } = new List<string>();
+
+        // ---------------------------------------------------------------- 代理
+        // 安装器自己的下载用什么代理。和安装状态同一份文件,少一个要维护的地方。
+        //   ProxyMode: None(直连) / System(跟随系统) / Custom(自定义)
+        public string ProxyMode { get; set; }
+        public string ProxyProtocol { get; set; }
+        public string ProxyHost { get; set; }
+        public int ProxyPort { get; set; }
     }
 
     /// <summary>状态文件的读写。放在 %LOCALAPPDATA%\DeepSeekHarness\installer-state.json。</summary>
@@ -71,21 +79,10 @@ namespace DshInstaller.Shared
 
         public static InstallerState Load()
         {
-            try
+            InstallerState fromFile = LoadRaw();
+            if (fromFile != null && !string.IsNullOrEmpty(fromFile.DshRoot))
             {
-                string path = ConfigPath;
-                if (File.Exists(path))
-                {
-                    string json = File.ReadAllText(path, Encoding.UTF8);
-                    InstallerState fromFile = JsonSerializer.Deserialize<InstallerState>(json, Options);
-                    if (fromFile != null && !string.IsNullOrEmpty(fromFile.DshRoot))
-                    {
-                        return fromFile;
-                    }
-                }
-            }
-            catch
-            {
+                return fromFile;
             }
 
             // 状态文件不在(回滚清掉了 / 装到一半没写成)时,退到**注册表里那条卸载项**。
@@ -94,6 +91,48 @@ namespace DshInstaller.Shared
             // 比 %LOCALAPPDATA% 那份文件可靠得多。没有这道兜底,用户想卸载时会看到
             // "未找到本程序的安装记录"、一项都不让勾 —— 明明东西就在硬盘上(实测)。
             return LoadFromRegistry();
+        }
+
+        /// <summary>
+        /// 直接读文件本身,不管里面有没有 DshRoot(读不到返回 null)。
+        ///
+        /// 专门给"代理设置"这类**装之前就要落盘**的东西用:
+        /// 它在向导第一页就写了,那会儿 DshRoot 还是空的,走 <see cref="Load"/> 会被判成
+        /// "没记录"然后丢掉。
+        /// </summary>
+        public static InstallerState LoadRaw()
+        {
+            try
+            {
+                string path = ConfigPath;
+                if (File.Exists(path))
+                {
+                    string json = File.ReadAllText(path, Encoding.UTF8);
+                    return JsonSerializer.Deserialize<InstallerState>(json, Options);
+                }
+            }
+            catch
+            {
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// 准备**改写**状态文件时用这个:优先拿文件里的那份(它带着代理设置这些字段),
+        /// 文件不在才退注册表,最后才新建。
+        /// 直接用 <see cref="Load"/> 的话,一份只有代理设置、还没装过东西的文件会被当成
+        /// "不存在"→ 新建 → 保存,把代理设置冲掉。
+        /// </summary>
+        public static InstallerState LoadForUpdate()
+        {
+            InstallerState fromFile = LoadRaw();
+            if (fromFile != null)
+            {
+                return fromFile;
+            }
+
+            return LoadFromRegistry() ?? new InstallerState();
         }
 
         /// <summary>从注册表那条卸载项里把安装信息读回来(读不到返回 null)。</summary>

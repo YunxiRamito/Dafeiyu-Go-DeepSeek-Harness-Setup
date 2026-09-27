@@ -1,8 +1,12 @@
 <Project>
   <PropertyGroup>
-    <InstallerVersion>1.4.9.1</InstallerVersion>
-    <InstallerVersionFull>1.4.9.1</InstallerVersionFull>
-    <LauncherVersion>1.4.9.1</LauncherVersion>
+    <InstallerVersion>1.5.0</InstallerVersion>
+    <InstallerVersionFull>1.5.0.0</InstallerVersionFull>
+    <!--
+      启动器那一版仍写 1.4.9.1:这一轮改的全在安装器里,启动器没跟着发版。
+      等启动器也出了 1.5.0 再一起改(set-version.ps1 会同时改两边)。
+    -->
+    <LauncherVersion>1.5.0</LauncherVersion>
     <DshPackage>@deepseek-ai/dsh</DshPackage>
     <DshPackageVersion>^0.1.5-rc.1</DshPackageVersion>
     <NodeLtsMajor>22</NodeLtsMajor>
@@ -22,8 +26,8 @@
       要看 commit 去 Release 页面看。
     -->
     <Product>Dafeiyu-Go</Product>
-    <AssemblyTitle>大肥鱼Go安装程序</AssemblyTitle>
-    <Description>大肥鱼Go，面向 DeepSeek Harness 的一体化 Windows 安装程序</Description>
+    <AssemblyTitle>Dafeiyu-Go 安装程序</AssemblyTitle>
+    <Description>Dafeiyu-Go，面向 DeepSeek Harness 的一体化 Windows 安装程序</Description>
     <Company>Deepseek / KitamaruRamito</Company>
     <Copyright>Copyright © 2026 Deepseek / KitamaruRamito · MIT License</Copyright>
     <Version>$(InstallerVersion)</Version>
@@ -38,10 +42,10 @@
     <InformationalVersion>$(InstallerVersion)</InformationalVersion>
 
     <!-- 引导程序那份的标题(和主程序不同:一个是安装程序,一个是引导程序) -->
-    <BootTitle>大肥鱼Go安装程序</BootTitle>
-    <BootDescription>大肥鱼Go，面向 DeepSeek Harness 的一体化 Windows 安装程序</BootDescription>
-    <UninstallTitle>大肥鱼Go卸载程序</UninstallTitle>
-    <UninstallDescription>卸载大肥鱼Go以及它装上的 DeepSeek Harness 组件</UninstallDescription>
+    <BootTitle>Dafeiyu-Go 安装程序</BootTitle>
+    <BootDescription>Dafeiyu-Go，面向 DeepSeek Harness 的一体化 Windows 安装程序</BootDescription>
+    <UninstallTitle>Dafeiyu-Go 卸载程序</UninstallTitle>
+    <UninstallDescription>卸载 Dafeiyu-Go 以及它装上的 DeepSeek Harness 组件</UninstallDescription>
 
     <Authors>Deepseek/KitamaruRamito</Authors>
   </PropertyGroup>

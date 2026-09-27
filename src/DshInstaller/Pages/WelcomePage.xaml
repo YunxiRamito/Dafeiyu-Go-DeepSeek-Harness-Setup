@@ -13,7 +13,7 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <!-- 品牌区:保留鲸鱼标，产品字样切换为大肥鱼Go。 -->
+        <!-- 品牌区:保留鲸鱼标，产品字样统一用 Dafeiyu-Go（中英一致，不再分两套名字）。 -->
         <StackPanel Grid.Row="0" VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="16">
             <Grid x:Name="MarkHost" HorizontalAlignment="Center" />
             <StackPanel x:Name="WordmarkHost" HorizontalAlignment="Center" Spacing="2">
@@ -22,7 +22,7 @@
                            FontSize="30"
                            FontWeight="SemiBold"
                            Foreground="{ThemeResource PrimaryTextBrush}"
-                           Text="大肥鱼Go" />
+                           Text="Dafeiyu-Go" />
                 <TextBlock x:Name="WordmarkEnglish"
                            HorizontalAlignment="Center"
                            FontSize="12"
@@ -35,6 +35,15 @@
                        TextAlignment="Center"
                        TextWrapping="Wrap"
                        Foreground="{ThemeResource SecondaryTextBrush}" />
+
+            <!-- 修复入口:文件缺失/被杀软删了时用,不重新走一遍向导 -->
+            <StackPanel HorizontalAlignment="Center" Spacing="3">
+                <Button x:Name="RepairButton" HorizontalAlignment="Center"
+                        Click="OnRepairClick" />
+                <TextBlock x:Name="RepairHint" FontSize="11" HorizontalAlignment="Center"
+                           TextAlignment="Center" TextWrapping="Wrap"
+                           Foreground="{ThemeResource TertiaryTextBrush}" />
+            </StackPanel>
         </StackPanel>
 
         <!-- 说明卡片 -->

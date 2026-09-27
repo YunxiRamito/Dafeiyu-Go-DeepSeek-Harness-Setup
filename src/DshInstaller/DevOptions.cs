@@ -20,6 +20,8 @@ namespace DshInstaller
     ///   --git  --pnpm  --python       装对应可选组件
     ///   --no-shortcut  --no-autostart  --no-launch
     ///   --no-runtime                  不装运行库(默认会装 .NET 8 桌面运行时与 Windows App Runtime)
+    ///   --force-reinstall             本机已有够新的组件也重新下载便携版
+    ///   --repair                      修复模式:按安装记录补齐缺失的文件,不动用户数据
     ///   --report=&lt;文件&gt;              把结果 JSON 写到这个文件
     ///
     /// 安全约定:
@@ -65,6 +67,17 @@ namespace DshInstaller
         public static bool NoShortcut { get; private set; }
         public static bool NoAutostart { get; private set; }
         public static bool NoLaunch { get; private set; }
+
+        /// <summary>
+        /// 强制重装组件(--force-reinstall):本机已经有够新的 Node / Git / pnpm / Python
+        /// 也照样下一份便携版。默认是"能用就不下"。
+        /// </summary>
+        public static bool ForceReinstall { get; private set; }
+
+        /// <summary>
+        /// 修复模式(--repair):按安装记录核对一遍,把缺的补回来,不动用户数据。
+        /// </summary>
+        public static bool Repair { get; private set; }
 
         /// <summary>
         /// 不装运行库(--no-runtime)。默认是要装的 —— 它们和 Node 一样是硬前置。
@@ -141,6 +154,14 @@ namespace DshInstaller
                 else if (string.Equals(argument, "--no-runtime", StringComparison.OrdinalIgnoreCase))
                 {
                     NoRuntime = true;
+                }
+                else if (string.Equals(argument, "--force-reinstall", StringComparison.OrdinalIgnoreCase))
+                {
+                    ForceReinstall = true;
+                }
+                else if (string.Equals(argument, "--repair", StringComparison.OrdinalIgnoreCase))
+                {
+                    Repair = true;
                 }
             }
 

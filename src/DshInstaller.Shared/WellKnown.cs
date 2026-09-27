@@ -7,7 +7,15 @@ namespace DshInstaller.Shared
     {
         public const string ProductName = "Dafeiyu-Go";
         public const string LegacyProductName = "DeepSeek Harness";
-        public const string ProductNameChinese = "大肥鱼Go";
+
+        /// <summary>
+        /// 中文界面下用的产品名。
+        ///
+        /// **和上面的 ProductName 一样是 "Dafeiyu-Go"** —— 当初叫「大肥鱼Go」,
+        /// 后来统一成英文品牌名,中文界面里也要用 Dafeiyu-Go,只在中英混排时补一个空格。
+        /// 留着这个常量是为了少改调用点,不是"中文名"的意思。
+        /// </summary>
+        public const string ProductNameChinese = "Dafeiyu-Go";
         public const string InstallerName = "Dafeiyu-Go Setup";
 
         /// <summary>

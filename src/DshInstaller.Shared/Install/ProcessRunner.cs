@@ -137,6 +137,38 @@ namespace DshInstaller.Shared.Install
                     }
                 }
 
+                // 代理放最后:所有外部命令(npm / pnpm / git / node)都按当前设置走。
+                // 顺序不能反 —— 反了的话,调用方传进来的 environment 会把它冲掉。
+                //
+                // 这里先**按不区分大小写**清掉继承来的那几个代理变量:
+                // ProcessStartInfo.EnvironmentVariables 是 StringDictionary(不区分大小写),
+                // 但直接赋值不会删掉旧键,结果环境里同时挂着两份,子进程取哪份看运气。
+                string[] proxyNames = { "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY" };
+                System.Collections.Generic.List<string> proxyKeys =
+                    new System.Collections.Generic.List<string>();
+                foreach (string key in info.EnvironmentVariables.Keys)
+                {
+                    for (int i = 0; i < proxyNames.Length; i++)
+                    {
+                        if (string.Equals(key, proxyNames[i], StringComparison.OrdinalIgnoreCase))
+                        {
+                            proxyKeys.Add(key);
+                            break;
+                        }
+                    }
+                }
+
+                for (int i = 0; i < proxyKeys.Count; i++)
+                {
+                    info.EnvironmentVariables.Remove(proxyKeys[i]);
+                }
+
+                foreach (System.Collections.Generic.KeyValuePair<string, string> pair
+                    in ProxySupport.ProcessEnvironment())
+                {
+                    info.EnvironmentVariables[pair.Key] = pair.Value;
+                }
+
                 StringBuilder stdout = new StringBuilder();
                 StringBuilder stderr = new StringBuilder();
 

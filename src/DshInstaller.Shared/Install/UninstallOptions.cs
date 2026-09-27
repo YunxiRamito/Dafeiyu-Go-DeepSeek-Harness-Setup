@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 
 namespace DshInstaller.Shared.Install
 {
@@ -28,6 +28,18 @@ namespace DshInstaller.Shared.Install
         /// 里面有会话记录和登录凭据,默认 **false** —— 只删程序不删数据。
         /// </summary>
         public bool RemoveUserData { get; set; }
+
+        /// <summary>
+        /// 删 DSH 本体目录时,**保留**里面的用户数据(技能、会话、插件)。
+        ///
+        /// 为什么需要它:便携安装时 DSH 的数据就在本体目录里
+        /// (<c>&lt;本体目录&gt;\.dsh</c> 和 <c>&lt;本体目录&gt;\plugins</c>)。
+        /// 直接整目录删掉 = 连用户的技能和插件一起没了 —— 本来是"卸载程序"却干成了"清除数据"。
+        ///
+        /// 默认 **true**(只删程序文件)。回滚那一路会显式置 false:
+        /// 它要删的是**本次刚造出来**的目录,不能留半拉子。
+        /// </summary>
+        public bool KeepUserData { get; set; } = true;
 
         // 逐项开关:界面上每一项都有勾选框,不是本安装器装的项会被禁用,自然也就不会被勾上。
         // 步骤按这些开关决定跑不跑。

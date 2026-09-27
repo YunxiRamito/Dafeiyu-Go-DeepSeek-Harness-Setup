@@ -34,6 +34,54 @@ namespace DshInstaller
         /// <summary>当前是安装还是卸载。</summary>
         public SessionMode Mode { get; set; } = SessionMode.Install;
 
+        /// <summary>
+        /// 修复模式:按安装记录核对一遍,把缺的、坏的补回来,**不动用户数据**。
+        /// 走的是同一套安装步骤 —— 它们本来就"有就跳过、没有才装",正好拿来当修复。
+        /// </summary>
+        public bool Repair { get; set; }
+
+        /// <summary>
+        /// 进入修复模式:把上次装到哪儿从记录里读回来,不重新问用户。
+        /// 记录也读不到时返回 false —— 那种情况该老老实实走一遍安装。
+        /// </summary>
+        public bool SetupRepair()
+        {
+            InstallerState state = ConfigStore.Load();
+            if (state == null || string.IsNullOrWhiteSpace(state.DshRoot))
+            {
+                return false;
+            }
+
+            Repair = true;
+            Mode = SessionMode.Install;
+            DshRoot = state.DshRoot;
+            LauncherRoot = string.IsNullOrWhiteSpace(state.LauncherRoot)
+                ? System.IO.Path.Combine(state.DshRoot, WellKnown.LauncherFolder)
+                : state.LauncherRoot;
+            ComponentsRoot = string.IsNullOrWhiteSpace(state.ComponentsRoot)
+                ? System.IO.Path.Combine(state.DshRoot, "components")
+                : state.ComponentsRoot;
+
+            DshRootChosen = true;
+            LauncherChosen = true;
+            ComponentsChosen = true;
+
+            // 不要"用现有的就跳过本体" —— 修复的全部意义就是"发现缺了就补"。
+            // 本体那一步自己会看标志文件:在就跳过,不在才装。
+            UseExistingDsh = false;
+
+            // 上次装过什么,这回按同样清单核对
+            InstallGit = state.InstallGit;
+            InstallPnpm = state.InstallPnpm;
+            InstallPython = state.InstallPython;
+            EnableAutostart = state.Autostart;
+            CreateDesktopShortcut = state.DesktopShortcut;
+            CreateStartMenuShortcut = state.DesktopShortcut;
+            AutostartChosen = true;
+
+            return true;
+        }
+
         /// <summary>卸载时的选择(装的时候没用)。</summary>
         public Shared.Install.UninstallOptions UninstallOptions { get; set; }
 
@@ -59,6 +107,12 @@ namespace DshInstaller
         public bool InstallGit { get; set; }
         public bool InstallPnpm { get; set; }
         public bool InstallPython { get; set; }
+
+        /// <summary>
+        /// 强制重新下载组件:本机明明已经有够新的 Node / Git / pnpm / Python 也照样装便携版。
+        /// 默认关 —— 默认是"能用就不下"。
+        /// </summary>
+        public bool ForceReinstall { get; set; }
 
         /// <summary>
         /// Git 和 pnpm 都已具备（本机已有或本次会安装）。
@@ -105,6 +159,9 @@ namespace DshInstaller
 
         /// <summary>检测结果,检测页填。</summary>
         public ProbeReport Report { get; set; }
+
+        /// <summary>装前体检结果(磁盘、端口、代理那几项),检测页填。</summary>
+        public PreflightReport Preflight { get; set; }
 
         /// <summary>本次安装的结果,进度页填、完成页读。</summary>
         public Shared.Install.InstallReport Result { get; set; }

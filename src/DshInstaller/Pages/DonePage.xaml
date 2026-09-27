@@ -77,6 +77,10 @@
 
         <StackPanel Grid.Row="1" Spacing="6" HorizontalAlignment="Center">
             <CheckBox x:Name="LaunchBox" IsChecked="True" HorizontalAlignment="Center" />
+            <Button x:Name="ExportLogButton" Click="OnExportLog" HorizontalAlignment="Center" />
+            <TextBlock x:Name="LogStatus" FontSize="11.5" HorizontalAlignment="Center"
+                       TextWrapping="Wrap" TextAlignment="Center" Visibility="Collapsed"
+                       Foreground="{ThemeResource TertiaryTextBrush}" />
             <TextBlock x:Name="FootnoteText" FontSize="11.5" HorizontalAlignment="Center"
                        Foreground="{ThemeResource TertiaryTextBrush}" />
         </StackPanel>

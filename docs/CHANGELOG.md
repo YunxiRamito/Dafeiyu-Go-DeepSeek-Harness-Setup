@@ -1,5 +1,93 @@
 # 变更记录
 
+本文件按 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 维护：一个版本一节、最新在上，
+日期用 `YYYY-MM-DD`，改动按 Added / Changed / Fixed / Security 分类。
+写给用户看：说人话，只讲用户在乎的事，不写内部实现。
+安装器和 DSH 启动器同步发版，所以同一节里两边的改动都写。
+
+## [1.5.0] - 2026-09-27
+
+**安装器**
+
+### Added
+
+- 装不上时可以直接导出安装日志：点一下打成一个压缩包并告诉你存在哪，转发给客服就行。
+- 安装前多了一份体检：磁盘剩余空间、系统版本、本机是否已装过 DSH、8787 端口被谁占着、是否走代理。有问题的项会标黄，并附一句该怎么办。
+- 新增「修复安装」：文件不见了或被杀软删掉了，点一下自动补齐，不用重装，也不会动你的设置和数据。命令行同样支持 `--repair`。
+- 下载源页面可以直接设置代理：不使用、跟随系统、自定义（http / https / socks5 + 地址端口），设置会记住。
+- 组件页新增「强制重新下载组件」开关：想统一用便携版时勾选。
+
+### Changed
+
+- 产品名统一为 **Dafeiyu-Go**：标题栏、欢迎页、完成页、卸载页，以及文件属性里的产品名和描述都换了。
+- 本机已经有较新版本的 Node / Git / pnpm / Python 时直接使用，不再重复下载；组件页会写明「已检测到，将直接使用」。
+- 卸载默认保留设置、技能、插件和会话记录，重装即可接着用；取消勾选才会一并清除。
+- 部署启动器不再等待镜像同步：以前可能白等二十多秒，现在没同步就立刻换源。
+- 多线程下载更聪明：首选下载源不可用时会换到一条支持多线程的源，而不是退回单线程。
+
+### Fixed
+
+- 修复卸载会连用户数据一起删掉的问题：便携安装下技能、插件和会话就放在程序目录里，以前会被一起清掉。
+- 修复代理设置不生效的问题：插件列表，以及安装过程中调用 npm / pnpm / git 的步骤，现在都按你选的代理走。
+- 修复导出安装日志失败的问题。
+
+### Security
+
+- 导出的日志会逐行抹掉令牌、密码、密钥这类内容；文件名里带 token / key / secret 的文件一律不打包。
+
+### DSH 启动器
+
+这一版安装器和启动器一起发，下面是启动器的改动。
+
+**新增**
+
+- 新增「主页」：打开设置先看到它，一眼看清 DSH 是不是在运行、有没有新版本，常用的插件、技能、组件、更新入口也都摆在这儿。
+- 新增「公告」栏：新消息直接显示在主页上，没看过会打「有新公告」的标记，看完点「全部已读」。
+- 新增「技能」板块：官方推荐、在线技能、本地技能三页，装技能跟装插件一样简单，支持从 GitHub 仓库或本地压缩包安装。
+- 本地技能能停用、能删除，不用再去翻文件夹。
+- 装了技能可以「检查更新」「全部更新」，装过的都记得来自哪个仓库。
+- 「关于」页多了更新日志，直接看这一版改了什么。
+- 加速源可以自己挑：点「高级设置」能看到每个源的实际速度，也能指定用哪个；默认自动选最快的。
+
+**改进**
+
+- 下载速度明显变快：插件和技能包同时开几条通道下，进度条旁边显示实时速度。
+- 启动时自动测一遍各加速源，网络环境变了（换 Wi-Fi、连 VPN、改代理）会重新测。
+- DSH 本体的更新通道可选自动 / latest / next / alpha，修好「明明有新版本却检查不到」。
+- 启动器更新分正式版和预览版，国内更新统一走国内镜像。
+- 更新进度不再乱跳：按这次实际新增的体积算，不再出现 223/230 这种数字。
+- 界面文字整体精简，按钮改成明确的动作词，空列表和报错都会说下一步干什么。
+- 插件和技能卡片显示仓库头像和星标。
+
+**修复**
+
+- 修复代理设置重启后被改回「不使用代理」的问题。
+- 修复更新检查不到新版本、更新进度看着像卡住的问题。
+- 修复下载进度不动、或者没有进度直接跳到完成的问题。
+- 修复插件安装失败却只说一句「安装失败」的问题，现在会写清失败原因。
+- 修复个别插件装不上的问题（压缩包里有个别文件解不开会让整包失败，现在跳过继续装）。
+- 修复国内装插件卡在「安装中」很久不动的问题（现在会走国内镜像）。
+- 修复插件明明装好了、重启后却显示「没安装」的问题。
+- 修复「检查更新」点完没有任何提示的问题，结果直接显示在页面上。
+- 修复技能列表「只看中文内容」选了没效果的问题。
+- 修复技能页显示一百多条结果却只有一页的问题。
+- 修复「已验证」筛选看着像坏了的问题：现在会写清"市场里的项目本来就都验证过"，并加了「未验证」筛选。
+- 修复 Windows 10 下插件图标线条过粗、技能图标不统一的问题。
+- 修复删除技能偶尔失败、让人以为按钮没反应的问题，失败也会给出原因。
+
+### Installer (English)
+
+- **Added** — Export the installation log in one click when something goes wrong; it is saved as a zip and you are told where. A pre-install check now covers disk space, Windows version, an existing DSH installation, port 8787 and the network proxy, flagging anything risky with what to do about it. A new "Repair installation" restores missing files without reinstalling and without touching your settings or data (also `--repair` on the command line). The download source page now offers a proxy setting (no proxy / system proxy / custom http, https or socks5) and remembers it. The components page has a "Re-download components" switch.
+- **Changed** — The product name is now Dafeiyu-Go everywhere, including the window title and file properties. Components already installed on this PC are reused instead of downloaded again. Uninstalling keeps your settings, skills, plug-ins and sessions by default. Deploying the launcher no longer waits for a mirror to catch up. Multi-threaded downloads now switch to a source that supports segmented transfer when the first one is unavailable.
+- **Fixed** — Uninstalling no longer removes your data along with the program. The proxy setting now applies to the plug-in list and to the npm / pnpm / git steps. Exporting the installation log no longer fails.
+- **Security** — Exported logs have tokens, passwords and keys masked line by line, and files whose names contain token, key or secret are never included.
+
+### DSH Launcher (English)
+
+- **Added** — A new Home page shows whether DSH is running and whether an update is available, with the usual plug-in, skill, component and update entries. Announcements appear on the Home page with an unread marker and a mark-all-read action. A new Skills section (featured, online, local) installs skills from a GitHub repository or a local archive, lets you disable or delete local ones, and supports check-for-updates and update-all. The About page shows the changelog. Acceleration sources can be picked manually from Advanced settings, which lists the measured speed of each source; automatic is the default.
+- **Changed** — Plug-ins and skill packages download over several connections at once, with the live speed shown next to the progress bar. Source speeds are measured at startup and re-measured when the network changes. The DSH core update channel can be automatic, latest, next or alpha. Launcher updates are split into stable and preview, and use mainland mirrors in China. Update progress is calculated from the bytes actually added, so it no longer jumps. Interface wording was shortened and buttons now use action verbs. Plug-in and skill cards show the repository avatar and star count.
+- **Fixed** — The proxy setting is no longer reset to "no proxy" after a restart. Update checks and update progress no longer appear stuck. Download progress no longer stalls or jumps straight to complete. Plug-in failures now state the reason instead of a bare "installation failed". Individual files that cannot be extracted no longer fail the whole plug-in. Installing plug-ins in China no longer sits at "installing" for minutes. An installed plug-in no longer shows as not installed after a restart. "Check for updates" now always reports its result. The skills list honours the Chinese-only filter and shows more than one page. The "verified" filter now explains that marketplace entries are verified by default and adds an "unverified" filter. Plug-in icon strokes on Windows 10 and inconsistent skill icons were corrected. Deleting a skill no longer fails silently.
+
 ## [1.4.9.1] - 2026-09-23
 
 ### 安装程序

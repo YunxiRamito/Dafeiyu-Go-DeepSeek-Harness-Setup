@@ -47,7 +47,14 @@ namespace DshInstaller.Pages
             options.RemoveShortcuts = IsChecked("shortcut");
             options.RemoveAutostart = IsChecked("autostart");
             options.CleanPath = IsChecked("path");
-            options.RemoveUserData = UserDataBox.IsChecked == true;
+
+            // 这个勾现在是"保留我的数据"(默认勾上),不是"删除用户数据"。
+            // 两个字段一起写:界面这层只管"留不留",步骤那层按各自语义各取所需 ——
+            // KeepUserData 决定删本体目录时要不要放过 .dsh / plugins,
+            // RemoveUserData 决定要不要清 %USERPROFILE%\.dsh 那份。
+            bool keepData = UserDataBox.IsChecked == true;
+            options.KeepUserData = keepData;
+            options.RemoveUserData = !keepData;
             options.DryRun = DevOptions.DryRun;
 
             // 把**记录里的真实路径**灌进选项里 —— 这一步以前漏了。

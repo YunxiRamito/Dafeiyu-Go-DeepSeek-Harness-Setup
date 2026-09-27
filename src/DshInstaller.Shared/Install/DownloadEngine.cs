@@ -18,6 +18,12 @@ namespace DshInstaller.Shared.Install
         public long TotalBytes { get; set; }
         public double BytesPerSecond { get; set; }
 
+        /// <summary>
+        /// 当前正在用的那条源,已经是给用户看的人话(形如「镜像 1（gh-proxy.com）」)。
+        /// 引擎每次换源都会刷新它 —— 用户得知道"慢是因为换了条路",而不是干瞪眼。
+        /// </summary>
+        public string SourceLabel { get; set; }
+
         public double Fraction
         {
             get
@@ -50,7 +56,6 @@ namespace DshInstaller.Shared.Install
         {
             get { return FormatBytes((long)BytesPerSecond) + "/s"; }
         }
-
         public static string FormatBytes(long bytes)
         {
             string[] units = new string[] { "B", "KB", "MB", "GB" };
@@ -62,7 +67,7 @@ namespace DshInstaller.Shared.Install
                 unit++;
             }
 
-            return value.ToString(unit == 0 ? "0" : "0.0", CultureInfo.InvariantCulture) + units[unit];
+            return value.ToString(unit == 0 ? "0" : "0.0", CultureInfo.InvariantCulture) + " " + units[unit];
         }
     }
 
@@ -80,13 +85,88 @@ namespace DshInstaller.Shared.Install
         /// <summary>连接 + 收到响应头的超时。死源要尽快放弃,不能让用户干等。</summary>
         private const int ResponseTimeoutMs = 8000;
 
-        /// <summary>连续多久没有新数据就判定"停滞",断开重连(带续传)。</summary>
-        private const int StallTimeoutMs = 10000;
+        /// <summary>
+        /// 连续多久没有新数据就判定"停滞",掐掉连接换下一个源。
+        ///
+        /// 用户定的口径是 **20 秒没有新字节**。现有那套超时管不到这种情况:
+        /// <c>HttpClient.Timeout</c> 管的是整个请求(这里给到 30 分钟),
+        /// <c>HttpWebRequest.ReadWriteTimeout</c> 只管单次读 ——
+        /// 而"连得上、响应头秒回、然后正文一点不吐"的镜像恰恰两个都不触发,
+        /// 界面就停在某个百分比上吊很久(虚拟机实测过)。
+        /// </summary>
+        private const int StallTimeoutMs = 20000;
+
+        /// <summary>进度与速度的上报窗口。0.5 秒平滑一次,数字不会一秒抖好几下。</summary>
+        private const double ProgressWindowSeconds = 0.5;
 
         /// <summary>换源之间歇一下;太快换源遇到限流反而更糟。</summary>
         private const int RetryDelayMs = 1200;
 
-        private static readonly HttpClient Client = CreateClient();
+        private static readonly object ClientGate = new object();
+        private static HttpClient _client;
+        private static int _clientGeneration = -1;
+
+        /// <summary>
+        /// 下载用的 HttpClient。**代理改了会自动重建** ——
+        /// 以前它是 `static readonly`,建一次用到死,用户在源选择页填了代理也不生效
+        /// (表现就是"填了代理照样连不上",而且日志里一句都看不出来)。
+        /// </summary>
+        private static HttpClient Client
+        {
+            get
+            {
+                lock (ClientGate)
+                {
+                    if (_client == null || _clientGeneration != ProxySupport.Generation)
+                    {
+                        // 旧的那个**不 Dispose**:它上面可能还有请求在飞。
+                        // 一次安装顶多重建一两次,这点开销可以忽略。
+                        _client = CreateClient();
+                        _clientGeneration = ProxySupport.Generation;
+                    }
+
+                    return _client;
+                }
+            }
+        }
+
+        /// <summary>强制下次取用时重建(一般用不着,改代理会自动触发)。</summary>
+        public static void RefreshClient()
+        {
+            lock (ClientGate)
+            {
+                _client = null;
+                _clientGeneration = -1;
+            }
+        }
+
+        /// <summary>
+        /// 借下载引擎这份 HttpClient 发一个请求,给"这个源现在能用吗"这类探测用。
+        ///
+        /// 为什么要借:探测也必须走用户设的代理。各处自己 new 一个 HttpClient
+        /// 就会绕开代理 —— 表现是"选了代理,探测却全失败,于是放弃最快的源"。
+        /// 超时/出错返回 null。
+        /// </summary>
+        public static HttpResponseMessage ProbeHead(HttpRequestMessage request, TimeSpan timeout)
+        {
+            if (request == null)
+            {
+                return null;
+            }
+
+            try
+            {
+                using (CancellationTokenSource cts = new CancellationTokenSource(timeout))
+                {
+                    return Client.Send(
+                        request, HttpCompletionOption.ResponseHeadersRead, cts.Token);
+                }
+            }
+            catch
+            {
+                return null;
+            }
+        }
 
         private static HttpClient CreateClient()
         {
@@ -96,6 +176,10 @@ namespace DshInstaller.Shared.Install
                 AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate,
                 UseProxy = true,
             };
+
+            // 三种代理模式(不使用 / 跟随系统 / 自定义)在这里落到 handler 上。
+            // 回环地址(BypassProxyOnLocal)永远绕过 —— 探本机 8787 不能走代理。
+            ProxySupport.Apply(handler);
 
             HttpClient client = new HttpClient(handler);
 
@@ -203,8 +287,9 @@ namespace DshInstaller.Shared.Install
                 if (attempt > 1)
                 {
                     Notice(onNotice, SharedText.T(
-                        "第 " + attempt + " 次尝试,切换下载源重试…",
-                        "Attempt " + attempt + ", trying another source…"));
+                        "第 " + attempt + " 次尝试," + MirrorSource.DescribeSource(ordered, url) + " 继续…",
+                        "Attempt " + attempt + ", continuing with "
+                        + MirrorSource.DescribeSource(ordered, url) + "…"));
 
                     try
                     {
@@ -220,6 +305,7 @@ namespace DshInstaller.Shared.Install
                     DownloadOne(
                         url,
                         partialPath,
+                        MirrorSource.DescribeSource(ordered, url),
                         progress,
                         cancellation,
                         delegate(string current, double currentSpeed)
@@ -304,8 +390,8 @@ namespace DshInstaller.Shared.Install
                         "下载失败(第 " + attempt + "/" + MaxAttempts + " 次):" + url + " : " + exception.Message);
 
                     Notice(onNotice, SharedText.T(
-                        "本次下载失败,准备切换下载源(" + attempt + "/" + MaxAttempts + ")",
-                        "This source failed; switching (" + attempt + "/" + MaxAttempts + ")"));
+                        MirrorSource.DescribeSource(ordered, url) + " 没成,换下一个源(" + attempt + "/" + MaxAttempts + ")",
+                        MirrorSource.DescribeSource(ordered, url) + " failed; switching (" + attempt + "/" + MaxAttempts + ")"));
 
                     if (onSourceFailed != null)
                     {
@@ -489,6 +575,7 @@ namespace DshInstaller.Shared.Install
         private static void DownloadOne(
             string url,
             string partialPath,
+            string sourceLabel,
             Action<DownloadProgress> progress,
             Func<bool> cancellation,
             Action<string, double> onTooSlow,
@@ -559,6 +646,7 @@ namespace DshInstaller.Shared.Install
                     {
                         ReceivedBytes = existing,
                         TotalBytes = total,
+                        SourceLabel = sourceLabel,
                     };
 
                     Stopwatch clock = Stopwatch.StartNew();
@@ -594,10 +682,10 @@ namespace DshInstaller.Shared.Install
                             windowBytes += read;
 
                             double elapsed = clock.Elapsed.TotalSeconds;
-                            if (elapsed - lastReportSeconds >= 0.25)
+                            if (elapsed - lastReportSeconds >= ProgressWindowSeconds)
                             {
                                 double windowSeconds = elapsed - lastReportSeconds;
-                                state.BytesPerSecond = windowBytes / (windowSeconds <= 0 ? 0.25 : windowSeconds);
+                                state.BytesPerSecond = windowBytes / (windowSeconds <= 0 ? ProgressWindowSeconds : windowSeconds);
                                 windowBytes = 0;
                                 lastReportSeconds = elapsed;
 

@@ -52,8 +52,10 @@ namespace DshInstaller.Shared.Install
             // 实测只有 23 KB/s,而 jsdmirror 有 1.5 MB/s(同一次测试、同一个文件)。
             List<string> urls = new List<string>();
             urls.Add("https://cdn.jsdmirror.com/gh/" + repo + "@" + branch + "/" + file);
-            urls.Add("https://ghproxy.net/" + raw);
+            // gh-proxy.com 排 ghproxy.net 前面:实测(2026-09-27)前者通且回 206,
+            // 后者通但不接受 Range;ghfast.top 每次都超时,已从池子里删掉。
             urls.Add("https://gh-proxy.com/" + raw);
+            urls.Add("https://ghproxy.net/" + raw);
             urls.Add("https://cdn.jsdelivr.net/gh/" + repo + "@" + branch + "/" + file);
             urls.Add(raw);
             return urls;
@@ -185,6 +187,8 @@ namespace DshInstaller.Shared.Install
             string repo = repository.Trim().Trim('/');
             string api = "https://api.github.com/repos/" + repo + "/releases/latest";
 
+            // 同上:gh-proxy.com 实测比 ghproxy.net 稳,放前面。
+            urls.Add("https://gh-proxy.com/" + api);
             urls.Add("https://ghproxy.net/" + api);
             urls.Add(api);
             return urls;

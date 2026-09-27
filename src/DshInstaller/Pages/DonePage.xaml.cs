@@ -143,12 +143,18 @@ namespace DshInstaller.Pages
             {
                 TitleText.Text = Localization.T("done.title");
                 SubtitleText.Text = Localization.IsChinese
-                    ? "大肥鱼Go现已可使用：请查看任务栏图标。"
+                    ? "Dafeiyu-Go 现已可使用：请查看任务栏图标。"
                     : "Dafeiyu-Go is now available. Check your system tray.";
             }
 
-            LaunchBox.Content = Localization.IsChinese ? "现在启动大肥鱼Go" : "Launch Dafeiyu-Go now";
+            LaunchBox.Content = Localization.IsChinese ? "现在启动 Dafeiyu-Go" : "Launch Dafeiyu-Go now";
+            ExportLogButton.Content = Localization.T("log.export.button");
             FootnoteText.Text = Localization.IsChinese ? "一键安装程序与启动器由 DeepSeek V4.1 Flash 与 雨沫云汐 制作。" : "The installer and launcher are made by DeepSeek V4.1 Flash and Yumo Yunxi.";
+        }
+
+        private void OnExportLog(object sender, RoutedEventArgs e)
+        {
+            LogExportUi.Export(this, LogStatus);
         }
 
         private void OnLoaded(object sender, RoutedEventArgs e)

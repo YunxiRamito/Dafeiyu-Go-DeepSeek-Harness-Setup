@@ -23,6 +23,9 @@ namespace DshInstaller.Pages
         private readonly Dictionary<string, CheckBox> _optionalBoxes =
             new Dictionary<string, CheckBox>();
 
+        /// <summary>这次会直接复用的组件 id(node / git / pnpm / python)。</summary>
+        private readonly HashSet<string> _reusable = new HashSet<string>();
+
         public ComponentsPage()
         {
             InitializeComponent();
@@ -106,6 +109,9 @@ namespace DshInstaller.Pages
 
             RootLabel.Text = Localization.IsChinese ? "组件目录" : "Component directory";
             BrowseButton.Content = Localization.T("btn.browse");
+            ForceReinstallBox.Content = Localization.T("components.force");
+            ForceReinstallHint.Text = Localization.T("components.force.hint");
+            ForceReinstallBox.IsChecked = InstallSession.Current.ForceReinstall;
             RequiredLabel.Text = Localization.IsChinese ? "必需" : "Required";
             OptionalLabel.Text = Localization.IsChinese ? "可选" : "Optional (selected items will be installed)";
 
@@ -155,8 +161,19 @@ namespace DshInstaller.Pages
             RequiredHost.Children.Clear();
             OptionalHost.Children.Clear();
             _optionalBoxes.Clear();
+            _reusable.Clear();
 
             ProbeReport report = InstallSession.Current.Report;
+
+            // 本机已经够新、能直接用的组件。勾了"强制重装"就当没有 —— 一律重新下便携版。
+            List<ReusableComponent> reusable = InstallSession.Current.ForceReinstall
+                ? new List<ReusableComponent>()
+                : ComponentReuse.Detect(report);
+
+            for (int index = 0; index < reusable.Count; index++)
+            {
+                _reusable.Add(reusable[index].Id);
+            }
 
             AddRequired(report, "winappruntime", "Windows App Runtime 1.8");
             AddRequired(report, "dotnet8", ".NET 8 桌面运行时");
@@ -184,7 +201,13 @@ namespace DshInstaller.Pages
 
             if (satisfied)
             {
-                row.SetState(RowState.Ready, Localization.IsChinese ? "已就绪" : "Ready", status.DetectedVersion);
+                // 能复用的就直接说清楚"不会再下载",别让用户对着"已就绪"猜要不要下
+                row.SetState(
+                    RowState.Ready,
+                    _reusable.Contains(id)
+                        ? Localization.T("components.reuse")
+                        : (Localization.IsChinese ? "已就绪" : "Ready"),
+                    status.DetectedVersion);
             }
             else
             {
@@ -199,20 +222,37 @@ namespace DshInstaller.Pages
         {
             ComponentStatus status = report != null ? report[id] : null;
             bool installed = status != null && status.IsSatisfied;
+            bool force = InstallSession.Current.ForceReinstall;
 
+            // 已装的默认不让勾(没意义)。但开了"强制重装"就能勾 ——
+            // 那时这个勾代表"这次重新下一份便携版放在组件目录里"。
             CheckBox box = new CheckBox
             {
                 Content = name,
                 IsChecked = !installed,
-                IsEnabled = !installed,
+                IsEnabled = !installed || force,
                 MinWidth = 0,
             };
 
+            string note;
+            if (!installed)
+            {
+                note = why;
+            }
+            else if (force)
+            {
+                note = Localization.T("components.reuse.force");
+            }
+            else
+            {
+                note = _reusable.Contains(id)
+                    ? Localization.T("components.reuse")
+                    : (Localization.IsChinese ? "已安装" : "Already installed");
+            }
+
             TextBlock whyText = new TextBlock
             {
-                Text = installed
-                    ? (Localization.IsChinese ? "已安装" : "Already installed")
-                    : why,
+                Text = note,
                 FontSize = 10.5,
                 TextWrapping = TextWrapping.NoWrap,
                 TextTrimming = TextTrimming.CharacterEllipsis,
@@ -228,6 +268,13 @@ namespace DshInstaller.Pages
 
             OptionalHost.Children.Add(box);
             OptionalHost.Children.Add(whyText);
+        }
+
+        /// <summary>勾/取消"强制重装":马上重铺列表,否则"将直接使用"那几个字还挂着。</summary>
+        private void OnForceReinstallChanged(object sender, RoutedEventArgs e)
+        {
+            InstallSession.Current.ForceReinstall = ForceReinstallBox.IsChecked == true;
+            BuildRows();
         }
 
         private void OnBrowseClick(object sender, RoutedEventArgs e)

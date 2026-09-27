@@ -69,6 +69,8 @@ namespace DshInstaller.Pages
             Scaffold.Subtitle = Localization.T("detect.desc");
             Scaffold.SetStep(2);
             ProgressText.Text = Localization.T("detect.running");
+            HealthLabel.Text = Localization.T("detect.health");
+            HealthHint.Text = Localization.T("detect.health.hint");
         }
 
         private void OnLoaded(object sender, RoutedEventArgs e)
@@ -115,11 +117,16 @@ namespace DshInstaller.Pages
 
         private async Task RunDetectionAsync()
         {
+            // 体检跟着检测一起在后台跑:磁盘、端口、代理都是本机查询,不额外等网。
+            // 放在同一个 Task.Run 里是为了让报告和组件状态同源 —— 端口那条要读"DSH 装没装"。
+            PreflightReport preflight = null;
             ProbeReport report = await Task.Run(delegate()
             {
                 try
                 {
-                    return EnvironmentProbe.Run(null);
+                    ProbeReport probed = EnvironmentProbe.Run(null);
+                    preflight = probed == null ? null : Preflight.Run(probed);
+                    return probed;
                 }
                 catch
                 {
@@ -173,6 +180,8 @@ namespace DshInstaller.Pages
             ProgressText.Text = Localization.IsChinese ? "检测完成" : "Check complete";
 
             ShowVerdict(report);
+            ShowHealth(preflight);
+            InstallSession.Current.Preflight = preflight;
 
             _finished = true;
             MainWindow window = FindWindow();
@@ -227,6 +236,132 @@ namespace DshInstaller.Pages
             VerdictText.Text = Localization.IsChinese
                 ? "有 " + pending + " 个必需组件缺失，可在下一步中安装"
                 : pending + " required component(s) missing; the next step can install them";
+        }
+
+        /// <summary>
+        /// 铺装前体检。有风险的那几项刷浅黄并带一句"怎么办";
+        /// 没风险的也照常列出来 —— 用户要看到"这些我都替你查过了"。
+        /// </summary>
+        private void ShowHealth(PreflightReport preflight)
+        {
+            if (preflight == null || preflight.Items.Count == 0)
+            {
+                HealthBox.Visibility = Visibility.Collapsed;
+                return;
+            }
+
+            HealthBox.Visibility = Visibility.Visible;
+            HealthHost.Children.Clear();
+
+            for (int index = 0; index < preflight.Items.Count; index++)
+            {
+                PreflightItem item = preflight.Items[index];
+                if (item == null)
+                {
+                    continue;
+                }
+
+                HealthHost.Children.Add(BuildHealthRow(item));
+            }
+
+            if (!preflight.HasRisk)
+            {
+                TextBlock allClear = new TextBlock
+                {
+                    Text = Localization.T("detect.health.ok"),
+                    FontSize = 11.5,
+                    TextWrapping = TextWrapping.Wrap,
+                };
+
+                Theme.Bind(
+                    allClear,
+                    TextBlock.ForegroundProperty,
+                    "SuccessBrush",
+                    Windows.UI.Color.FromArgb(255, 46, 158, 91));
+
+                HealthHost.Children.Add(allClear);
+            }
+        }
+
+        private UIElement BuildHealthRow(PreflightItem item)
+        {
+            StackPanel content = new StackPanel { Spacing = 2 };
+
+            Grid line = new Grid();
+            line.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(118) });
+            line.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+            TextBlock label = new TextBlock
+            {
+                Text = item.Label,
+                FontSize = 11.5,
+                FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+                TextWrapping = TextWrapping.Wrap,
+            };
+            Theme.Bind(
+                label,
+                TextBlock.ForegroundProperty,
+                "SecondaryTextBrush",
+                Windows.UI.Color.FromArgb(255, 92, 99, 110));
+            Grid.SetColumn(label, 0);
+            line.Children.Add(label);
+
+            TextBlock value = new TextBlock
+            {
+                Text = item.Value ?? string.Empty,
+                FontSize = 11.5,
+                TextWrapping = TextWrapping.Wrap,
+            };
+            Theme.Bind(
+                value,
+                TextBlock.ForegroundProperty,
+                "PrimaryTextBrush",
+                Windows.UI.Color.FromArgb(255, 26, 29, 35));
+            Grid.SetColumn(value, 1);
+            line.Children.Add(value);
+
+            content.Children.Add(line);
+
+            if (!string.IsNullOrWhiteSpace(item.Advice))
+            {
+                TextBlock advice = new TextBlock
+                {
+                    Text = item.Advice,
+                    FontSize = 11.5,
+                    TextWrapping = TextWrapping.Wrap,
+                    Margin = new Thickness(118, 0, 0, 0),
+                };
+
+                Theme.Bind(
+                    advice,
+                    TextBlock.ForegroundProperty,
+                    item.Risk ? "WarningBrush" : "TertiaryTextBrush",
+                    item.Risk
+                        ? Windows.UI.Color.FromArgb(255, 217, 138, 0)
+                        : Windows.UI.Color.FromArgb(255, 138, 144, 153));
+
+                content.Children.Add(advice);
+            }
+
+            if (!item.Risk)
+            {
+                return content;
+            }
+
+            Border box = new Border
+            {
+                CornerRadius = new CornerRadius(8),
+                Padding = new Thickness(10, 8, 10, 8),
+                Child = content,
+            };
+
+            Theme.Bind(
+                box,
+                Border.BackgroundProperty,
+                "WarningSoftBrush",
+                Windows.UI.Color.FromArgb(30, 217, 138, 0));
+
+            return box;
         }
 
         private MainWindow FindWindow()

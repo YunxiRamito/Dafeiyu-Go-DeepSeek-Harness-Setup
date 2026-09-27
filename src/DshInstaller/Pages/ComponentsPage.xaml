@@ -23,6 +23,7 @@
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />
@@ -43,6 +44,15 @@
                     <TextBlock x:Name="ElevationHint" Grid.Row="1" Grid.ColumnSpan="3"
                                FontSize="11.5" TextWrapping="Wrap"
                                Visibility="Collapsed" />
+
+                    <!-- 强制重装:本机已经有够新的组件时,默认直接用;勾上就一律下便携版 -->
+                    <StackPanel Grid.Row="2" Grid.ColumnSpan="3" Spacing="0">
+                        <CheckBox x:Name="ForceReinstallBox" MinWidth="0"
+                                  Click="OnForceReinstallChanged" />
+                        <TextBlock x:Name="ForceReinstallHint" FontSize="11"
+                                   TextWrapping="Wrap" Margin="30,0,0,0"
+                                   Foreground="{ThemeResource TertiaryTextBrush}" />
+                    </StackPanel>
                 </Grid>
             </Border>
 

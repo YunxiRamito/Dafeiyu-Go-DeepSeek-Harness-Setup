@@ -72,6 +72,90 @@ namespace DshInstaller.Shared.Install
         /// <summary>解压/下载用的临时目录。</summary>
         public string TempRoot { get; set; }
 
+        /// <summary>
+        /// 本机已经够新、可以直接用的组件(检测结果里挑出来的)。
+        /// 只放"这次要复用的",没挑出来的组件照旧下载安装。
+        /// </summary>
+        public List<ReusableComponent> ReusableComponents { get; set; } =
+            new List<ReusableComponent>();
+
+        /// <summary>
+        /// 强制重装:忽略"本机已有",把勾选的组件重新下一份便携版。
+        /// 给"本机那份能用但我不想要它"和测试用。
+        /// </summary>
+        public bool ForceReinstall { get; set; }
+
+        /// <summary>
+        /// 修复模式:先核对一遍装过的东西,缺的补齐。
+        /// 步骤本身幂等,所以修复就是"整条安装流程再跑一遍,有的跳过、没的装上"。
+        /// </summary>
+        public bool Repair { get; set; }
+
+        /// <summary>找一个可以复用的组件,没有返回 null。</summary>
+        public ReusableComponent Reusable(string id)
+        {
+            if (ReusableComponents == null)
+            {
+                return null;
+            }
+
+            for (int i = 0; i < ReusableComponents.Count; i++)
+            {
+                ReusableComponent item = ReusableComponents[i];
+                if (item != null && string.Equals(item.Id, id, System.StringComparison.OrdinalIgnoreCase))
+                {
+                    return item;
+                }
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// 这次到底复不复用。除了开关,还要**再确认一次文件真的在** ——
+        /// 检测到安装之间隔着好几页,用户完全可能中间把 Node 卸了。
+        /// 文件没了就当没复用,老老实实去下(不然进度页会报"未找到 npm")。
+        /// </summary>
+        public bool CanReuse(string id)
+        {
+            if (ForceReinstall)
+            {
+                return false;
+            }
+
+            ReusableComponent item = Reusable(id);
+            if (item == null || string.IsNullOrWhiteSpace(item.ExePath))
+            {
+                return false;
+            }
+
+            try
+            {
+                return System.IO.File.Exists(item.ExePath);
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        /// <summary>复用路径(没复用就是 null)。</summary>
+        public string ReusePath(string id)
+        {
+            return CanReuse(id) ? Reusable(id).ExePath : null;
+        }
+
+        /// <summary>复用组件的目录(没复用或没目录就是 null)。</summary>
+        public string ReuseDirectory(string id)
+        {
+            if (!CanReuse(id))
+            {
+                return null;
+            }
+
+            return Reusable(id).PathDirectory;
+        }
+
         /// <summary>把选项里涉及目录的字段做一次合理性检查,返回错误说明(空 = 没问题)。</summary>
         public string Validate()
         {

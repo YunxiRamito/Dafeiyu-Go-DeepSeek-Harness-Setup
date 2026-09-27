@@ -88,8 +88,17 @@ namespace DshInstaller.Shared.Install
                         {
                             if (options.RemoveDshCore)
                             {
+                                // 用户数据就在本体目录里(便携安装):.dsh 是技能/会话,plugins 是插件。
+                                // 默认这两个留着 —— 卸载的是程序,不是人家攒下来的东西。
+                                List<string> keep = new List<string>();
+                                if (options.KeepUserData && !string.IsNullOrWhiteSpace(options.DshRoot))
+                                {
+                                    keep.Add(Path.Combine(options.DshRoot, ".dsh"));
+                                    keep.Add(Path.Combine(options.DshRoot, "plugins"));
+                                }
+
                                 DeleteDirectory(context, options, options.DshRoot,
-                                    SharedText.T("DSH 本体", "DSH core"));
+                                    SharedText.T("DSH 本体", "DSH core"), keep);
                             }
 
                             if (options.RemoveComponents)
@@ -639,8 +648,146 @@ namespace DshInstaller.Shared.Install
             context.Report(SharedText.T("完成", "Done"), 100);
         }
 
+        /// <summary>
+        /// 把"要保留的路径"收拾干净:只认**真实存在**、而且在 root 里面的那些。
+        /// 不存在的、跑到 root 外面的(状态文件被手改过)一律丢掉 ——
+        /// 这种输入拿去拼路径很容易变成"删了不该删的地方"。
+        /// </summary>
+        /// <remarks>public 是为了能单独跑测试:这段逻辑一旦出错,删掉的是用户的数据。</remarks>
+        public static List<string> NormalizeKeeps(string root, List<string> keepPaths)
+        {
+            List<string> keeps = new List<string>();
+            if (keepPaths == null || keepPaths.Count == 0)
+            {
+                return keeps;
+            }
+
+            string prefix = root.TrimEnd('\\') + "\\";
+
+            for (int i = 0; i < keepPaths.Count; i++)
+            {
+                if (string.IsNullOrWhiteSpace(keepPaths[i]))
+                {
+                    continue;
+                }
+
+                try
+                {
+                    string full = Path.GetFullPath(keepPaths[i]).TrimEnd('\\');
+
+                    // 必须在 root 里面(不是 root 自己),否则不认
+                    if (!full.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    if (Directory.Exists(full) && !keeps.Contains(full))
+                    {
+                        keeps.Add(full);
+                    }
+                }
+                catch
+                {
+                }
+            }
+
+            return keeps;
+        }
+
+        /// <summary>
+        /// 删 root 里的东西,但 <paramref name="keep"/> 那些目录整个留下。
+        ///
+        /// 递归规则:遇到要保留的目录 —— 跳过;保留项在更深处 —— 进这一层继续。
+        /// 返回值是没删掉的项数,和 <see cref="DeleteTree"/> 语义一致。
+        /// </summary>
+        /// <remarks>public 是为了能单独跑测试(见 NormalizeKeeps 的说明)。</remarks>
+        public static int DeleteTreeKeeping(InstallContext context, string root, List<string> keep)
+        {
+            int failed = 0;
+
+            string[] directories;
+            try
+            {
+                directories = Directory.GetDirectories(root);
+            }
+            catch (Exception exception)
+            {
+                context.Log("读取 " + root + " 出错:" + exception.Message);
+                return 1;
+            }
+
+            for (int i = 0; i < directories.Length; i++)
+            {
+                string child;
+
+                try
+                {
+                    child = Path.GetFullPath(directories[i]).TrimEnd('\\');
+                }
+                catch
+                {
+                    continue;
+                }
+
+                bool keepWhole = false;
+                bool keepInside = false;
+
+                for (int k = 0; k < keep.Count; k++)
+                {
+                    if (string.Equals(child, keep[k], StringComparison.OrdinalIgnoreCase))
+                    {
+                        keepWhole = true;
+                        break;
+                    }
+
+                    if (keep[k].StartsWith(child + "\\", StringComparison.OrdinalIgnoreCase))
+                    {
+                        keepInside = true;
+                    }
+                }
+
+                if (keepWhole)
+                {
+                    context.Log("保留 " + child);
+                    continue;
+                }
+
+                failed += keepInside
+                    ? DeleteTreeKeeping(context, child, keep)
+                    : DeleteTree(context, child);
+            }
+
+            // 这一层的散文件:没有"保留"的说法,全部删掉
+            try
+            {
+                foreach (string file in Directory.GetFiles(root))
+                {
+                    try
+                    {
+                        File.Delete(file);
+                    }
+                    catch (Exception exception)
+                    {
+                        context.Log("删除文件失败 " + file + ":" + exception.Message);
+                        failed++;
+                    }
+                }
+            }
+            catch (Exception exception)
+            {
+                context.Log("读取文件列表出错 " + root + ":" + exception.Message);
+                failed++;
+            }
+
+            // 注意:**这里不能删 root 自己**。
+            // 保留项还挂在 root 底下,顺手来一发递归删除就把人家删了 ——
+            // 整个"保留用户数据"的意义正好反过来了。root 连同里面的保留项一起留着。
+            return failed;
+        }
+
         private static void DeleteDirectory(
-            InstallContext context, UninstallOptions options, string directory, string label)
+            InstallContext context, UninstallOptions options, string directory, string label,
+            List<string> keepPaths = null)
         {
             if (string.IsNullOrWhiteSpace(directory))
             {
@@ -686,7 +833,11 @@ namespace DshInstaller.Shared.Install
 
             try
             {
-                int failed = DeleteTree(context, full);
+                // 有要保留的子目录时走"选择性删除":程序文件清掉,用户数据原样留着。
+                List<string> keep = NormalizeKeeps(full, keepPaths);
+                int failed = keep.Count == 0
+                    ? DeleteTree(context, full)
+                    : DeleteTreeKeeping(context, full, keep);
 
                 if (failed > 0)
                 {
@@ -694,7 +845,9 @@ namespace DshInstaller.Shared.Install
                     // (实测就是"杀完进程立刻删,还剩一项")。
                     context.Log("有 " + failed + " 项没删掉,等一秒再试一次");
                     System.Threading.Thread.Sleep(1000);
-                    failed = DeleteTree(context, full);
+                    failed = keep.Count == 0
+                        ? DeleteTree(context, full)
+                        : DeleteTreeKeeping(context, full, keep);
                 }
 
                 if (failed > 0)
@@ -706,6 +859,12 @@ namespace DshInstaller.Shared.Install
                     context.Log("有 " + failed + " 项残留(多半被占用),已记日志;不影响卸载结果");
                     context.Report(
                         label + SharedText.T("已删除(有残留,见日志)", " deleted (some items left, see log)"), 100);
+                }
+                else if (keep.Count > 0)
+                {
+                    context.Log("已删除 " + full + " ,保留:" + string.Join(" ; ", keep.ToArray()));
+                    context.Report(
+                        label + SharedText.T("已删除,已保留用户数据", " deleted; your data was kept"), 100);
                 }
                 else
                 {
@@ -836,6 +995,21 @@ namespace DshInstaller.Shared.Install
 
             if (left.Count > 0)
             {
+                // 用户选择"保留数据"时,DSH 本体目录会被故意留下(里面是技能/会话/插件),
+                // 这时不能报"存在残留项" —— 用户明明自己选的保留,却看到一句像出了错的提示。
+                bool intentional = options.KeepUserData
+                    && left.Count == 1
+                    && !string.IsNullOrWhiteSpace(options.DshRoot)
+                    && string.Equals(left[0], options.DshRoot, StringComparison.OrdinalIgnoreCase);
+
+                if (intentional)
+                {
+                    context.Log("按你的选择保留了 " + left[0] + " 里的用户数据");
+                    context.Report(
+                        SharedText.T("已按你的选择保留用户数据", "Your data was kept, as you chose"), 100);
+                    return;
+                }
+
                 context.Log("这些目录还在(可能被占用):" + string.Join("; ", left.ToArray()));
                 context.Report(SharedText.T("存在残留项,详情见日志", "Some items remain; see the log"), 100);
             }

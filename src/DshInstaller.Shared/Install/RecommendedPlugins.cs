@@ -47,7 +47,12 @@ namespace DshInstaller.Shared.Install
                 ? new[] { raw }
                 : new[] { jsdelivr };
 
-            using (HttpClient client = new HttpClient())
+            // 这里原来直接 new HttpClient(),用的一直是系统默认代理 ——
+            // 用户选的代理对这张列表不生效(表现:插件列表拉不下来,但下载都正常)。
+            HttpClientHandler handler = new HttpClientHandler { AllowAutoRedirect = true };
+            ProxySupport.Apply(handler);
+
+            using (HttpClient client = new HttpClient(handler))
             {
                 client.Timeout = TimeSpan.FromSeconds(20);
                 client.DefaultRequestHeaders.UserAgent.ParseAdd(

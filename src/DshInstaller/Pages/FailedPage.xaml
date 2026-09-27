@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Page
     x:Class="DshInstaller.Pages.FailedPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -57,6 +57,22 @@
                         <TextBlock x:Name="ManualLabel" FontSize="12"
                                    Foreground="{ThemeResource SecondaryTextBrush}" />
                         <StackPanel x:Name="LinksHost" Spacing="2" />
+                    </StackPanel>
+                </Border>
+
+                <!-- 一键导出日志:出问题时让用户把日志发过来,他不用去翻目录找文件 -->
+                <Border x:Name="LogBox" CornerRadius="{ThemeResource CardCornerRadius}"
+                        Background="{ThemeResource CardBackgroundSubtleBrush}"
+                        BorderBrush="{ThemeResource CardBorderBrush}"
+                        BorderThickness="1"
+                        Padding="14,10">
+                    <StackPanel Spacing="6">
+                        <TextBlock x:Name="LogLabel" FontSize="12"
+                                   Foreground="{ThemeResource SecondaryTextBrush}" />
+                        <Button x:Name="ExportLogButton" Click="OnExportLog" />
+                        <TextBlock x:Name="LogStatus" FontSize="11.5"
+                                   TextWrapping="Wrap" Visibility="Collapsed"
+                                   Foreground="{ThemeResource TertiaryTextBrush}" />
                     </StackPanel>
                 </Border>
             </StackPanel>

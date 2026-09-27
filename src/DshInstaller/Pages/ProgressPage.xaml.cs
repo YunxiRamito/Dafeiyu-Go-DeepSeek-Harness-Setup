@@ -202,6 +202,18 @@ namespace DshInstaller.Pages
                 TempRoot = Path.Combine(Path.GetTempPath(), "DSH-Installer"),
             };
 
+            // 本机已经够新的组件直接用,不再下一份便携版。
+            // 这里再挑一次(而不是复用组件页那份):检测结果可能来自上一次运行,
+            // 而且"强制重装"是用户在组件页上现改的。
+            options.ForceReinstall = session.ForceReinstall || DevOptions.ForceReinstall;
+            if (!options.ForceReinstall)
+            {
+                options.ReusableComponents = ComponentReuse.Detect(report);
+            }
+
+            // 修复模式:补缺的,别的照旧。步骤本身幂等,所以这里只要把标记传下去。
+            options.Repair = session.Repair || DevOptions.Repair;
+
             // 缺 Node 才装。检测结果没有(例如直接跳页过来)时按"要装"处理。
             ComponentStatus node = report == null ? null : report["node"];
             options.InstallNode = node == null || !node.IsSatisfied;
@@ -579,6 +591,9 @@ namespace DshInstaller.Pages
                 RemoveShortcuts = context.CreatedShortcut,
                 RemoveAutostart = context.RegisteredAutostart,
                 RemoveUserData = false,
+                // 回滚要删的是**本次刚造出来**的目录,里面不该留东西 ——
+                // "保留用户数据"那个默认值是给正常卸载用的,别拿到这儿来。
+                KeepUserData = false,
                 UserDataRoot = Path.Combine(
                     Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".dsh"),
                 DryRun = _options.DryRun,

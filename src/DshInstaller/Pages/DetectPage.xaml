@@ -7,43 +7,59 @@
     Background="Transparent">
 
     <controls:PageScaffold x:Name="Scaffold" Title="" Subtitle="">
-        <Grid>
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="*" />
-                <RowDefinition Height="Auto" />
-            </Grid.RowDefinitions>
+        <!-- 体检报告加进来以后内容变高了,整页改成可滚动,免得小屏上最后一项被裁掉 -->
+        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollMode="Disabled">
+            <StackPanel Spacing="0">
 
-            <!-- 检测进度:一根细条 + 一行字。检测完把细条收起来,免得满值黑条看着像分割线 -->
-            <StackPanel x:Name="ProgressArea" Grid.Row="0" Spacing="6" Margin="0,0,0,10">
-                <ProgressBar x:Name="CheckProgress" Height="2" Minimum="0" Maximum="100" Value="0"
-                             Foreground="{ThemeResource AccentBrush}" />
-                <TextBlock x:Name="ProgressText" FontSize="12"
-                           Foreground="{ThemeResource TertiaryTextBrush}" />
-            </StackPanel>
-
-            <!-- 组件列表:两列排,9 项也能一屏放下 -->
-            <Border Grid.Row="1" CornerRadius="{ThemeResource CardCornerRadius}"
-                    Background="{ThemeResource CardBackgroundBrush}"
-                    BorderBrush="{ThemeResource CardBorderBrush}"
-                    BorderThickness="1"
-                    Padding="16,10">
-                <Grid x:Name="RowsHost" ColumnSpacing="20" VerticalAlignment="Top" />
-            </Border>
-
-            <!-- 结论条 -->
-            <Border x:Name="VerdictBox" Grid.Row="2" Visibility="Collapsed"
-                    Margin="0,14,0,0"
-                    CornerRadius="{ThemeResource CardCornerRadius}" Padding="14,11"
-                    BorderThickness="1"
-                    BorderBrush="{ThemeResource CardBorderBrush}">
-                <StackPanel Orientation="Horizontal" Spacing="9">
-                    <FontIcon x:Name="VerdictIcon" FontSize="14" Glyph="&#xE73E;"
-                              VerticalAlignment="Center" />
-                    <TextBlock x:Name="VerdictText" FontSize="12.5" TextWrapping="Wrap"
-                               VerticalAlignment="Center" />
+                <!-- 检测进度:一根细条 + 一行字。检测完把细条收起来,免得满值黑条看着像分割线 -->
+                <StackPanel x:Name="ProgressArea" Spacing="6" Margin="0,0,0,10">
+                    <ProgressBar x:Name="CheckProgress" Height="2" Minimum="0" Maximum="100" Value="0"
+                                 Foreground="{ThemeResource AccentBrush}" />
+                    <TextBlock x:Name="ProgressText" FontSize="12"
+                               Foreground="{ThemeResource TertiaryTextBrush}" />
                 </StackPanel>
-            </Border>
-        </Grid>
+
+                <!-- 组件列表:两列排,9 项也能一屏放下 -->
+                <Border CornerRadius="{ThemeResource CardCornerRadius}"
+                        Background="{ThemeResource CardBackgroundBrush}"
+                        BorderBrush="{ThemeResource CardBorderBrush}"
+                        BorderThickness="1"
+                        Padding="16,10">
+                    <Grid x:Name="RowsHost" ColumnSpacing="20" VerticalAlignment="Top" />
+                </Border>
+
+                <!-- 结论条 -->
+                <Border x:Name="VerdictBox" Visibility="Collapsed"
+                        Margin="0,14,0,0"
+                        CornerRadius="{ThemeResource CardCornerRadius}" Padding="14,11"
+                        BorderThickness="1"
+                        BorderBrush="{ThemeResource CardBorderBrush}">
+                    <StackPanel Orientation="Horizontal" Spacing="9">
+                        <FontIcon x:Name="VerdictIcon" FontSize="14" Glyph="&#xE73E;"
+                                  VerticalAlignment="Center" />
+                        <TextBlock x:Name="VerdictText" FontSize="12.5" TextWrapping="Wrap"
+                                   VerticalAlignment="Center" />
+                    </StackPanel>
+                </Border>
+
+                <!-- 装前体检:不是"缺什么",而是"现在装会不会出事"。有风险的项刷浅黄 + 一句怎么办 -->
+                <Border x:Name="HealthBox" Visibility="Collapsed"
+                        Margin="0,12,0,0"
+                        CornerRadius="{ThemeResource CardCornerRadius}" Padding="16,12"
+                        BorderThickness="1"
+                        Background="{ThemeResource CardBackgroundSubtleBrush}"
+                        BorderBrush="{ThemeResource CardBorderBrush}">
+                    <StackPanel Spacing="9">
+                        <StackPanel Spacing="2">
+                            <TextBlock x:Name="HealthLabel" FontSize="12.5" FontWeight="SemiBold"
+                                       Foreground="{ThemeResource PrimaryTextBrush}" />
+                            <TextBlock x:Name="HealthHint" FontSize="11.5" TextWrapping="Wrap"
+                                       Foreground="{ThemeResource TertiaryTextBrush}" />
+                        </StackPanel>
+                        <StackPanel x:Name="HealthHost" Spacing="6" />
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
     </controls:PageScaffold>
 </Page>

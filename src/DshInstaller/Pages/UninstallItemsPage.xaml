@@ -37,7 +37,8 @@
                     <TextBlock x:Name="OptionsLabel" FontSize="12.5"
                                Foreground="{ThemeResource SecondaryTextBrush}" />
 
-                    <CheckBox x:Name="UserDataBox" IsChecked="False" />
+                    <!-- 勾上 = 保留（默认）。取消勾选才连设置/技能/插件/会话一起清掉 -->
+                    <CheckBox x:Name="UserDataBox" IsChecked="True" />
                     <TextBlock x:Name="UserDataHint" FontSize="10.5"
                                Margin="30,-4,0,0"
                                TextWrapping="Wrap"

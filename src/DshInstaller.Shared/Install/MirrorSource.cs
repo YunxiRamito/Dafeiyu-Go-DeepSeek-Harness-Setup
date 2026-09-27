@@ -254,11 +254,15 @@ namespace DshInstaller.Shared.Install
                 return result;
             }
 
+            // 虚拟机实测(2026-09-27,三轮):
+            //   gh-proxy.com   通,而且**唯一回 206** —— 只有它能多线程分段下载
+            //   ghproxy.net    通,但只回 200,不接受 Range
+            //   ghfast.top     **每次都超时**,直接删掉,别再让用户等它
+            // 所以顺序固定为 gh-proxy.com → ghproxy.net。
             string[] proxies = new string[]
             {
                 "https://gh-proxy.com/",
-                "https://ghproxy.net/",
-                "https://ghfast.top/"
+                "https://ghproxy.net/"
             };
             for (int index = 0; index < proxies.Length; index++)
             {
@@ -266,6 +270,107 @@ namespace DshInstaller.Shared.Install
             }
 
             return result;
+        }
+
+        // ------------------------------------------------------------ 源的"人话"名字
+
+        /// <summary>
+        /// 这条地址是不是"国内镜像"(相对官方源而言)。给进度显示挑词用。
+        /// </summary>
+        public static bool IsMirrorUrl(string url)
+        {
+            if (string.IsNullOrWhiteSpace(url))
+            {
+                return false;
+            }
+
+            string[] marks = new string[]
+            {
+                "gh-proxy.com",
+                "ghproxy.net",
+                "jsdmirror.com",
+                "jsdelivr.net",
+                "npmmirror.com",
+                "huaweicloud.com",
+                "mirrors.ustc.edu.cn",
+                "mirror.nju.edu.cn",
+                "mirrors.aliyun.com",
+            };
+
+            for (int i = 0; i < marks.Length; i++)
+            {
+                if (url.IndexOf(marks[i], StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>取地址的主机名;取不到就把整条地址原样返回(短一些)。</summary>
+        public static string HostOf(string url)
+        {
+            if (string.IsNullOrWhiteSpace(url))
+            {
+                return string.Empty;
+            }
+
+            try
+            {
+                Uri parsed;
+                if (Uri.TryCreate(url, UriKind.Absolute, out parsed))
+                {
+                    return parsed.Host;
+                }
+            }
+            catch
+            {
+            }
+
+            return url.Length > 40 ? url.Substring(0, 40) + "…" : url;
+        }
+
+        /// <summary>
+        /// 给用户看的"当前在用哪条源"。域名对用户不友好,所以配一个序号 + 中文说明,
+        /// 形如「镜像 1（gh-proxy.com）」。<paramref name="ordinal"/> 从 0 起。
+        /// </summary>
+        public static string DescribeSource(string url, int ordinal)
+        {
+            string host = HostOf(url);
+            if (IsMirrorUrl(url))
+            {
+                return SharedText.T(
+                    "镜像 " + (ordinal + 1) + "（" + host + "）",
+                    "Mirror " + (ordinal + 1) + " (" + host + ")");
+            }
+
+            return SharedText.T("官方源（" + host + "）", "Official (" + host + ")");
+        }
+
+        /// <summary>在候选清单里找这条地址的序号(找不到返回 0)。</summary>
+        public static int IndexOf(IList<string> urls, string url)
+        {
+            if (urls == null)
+            {
+                return 0;
+            }
+
+            for (int i = 0; i < urls.Count; i++)
+            {
+                if (string.Equals(urls[i], url, StringComparison.OrdinalIgnoreCase))
+                {
+                    return i;
+                }
+            }
+
+            return 0;
+        }
+
+        /// <summary>候选清单里这条地址的"人话"名字。</summary>
+        public static string DescribeSource(IList<string> urls, string url)
+        {
+            return DescribeSource(url, IndexOf(urls, url));
         }
 
         // ------------------------------------------------------------ 系统组件(运行库)

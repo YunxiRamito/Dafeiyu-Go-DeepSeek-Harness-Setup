@@ -22,11 +22,36 @@ namespace DshInstaller
         {
             DevOptions.Parse(args);
 
+            // 代理设置从配置文件读回来。
+            // 静默模式没人去点源选择页 —— 不在这儿读一次,上次设好的代理就不会生效,
+            // 表现是"GUI 里能下、无人值守死活下不动"(同一条网络、同一台机器)。
+            try
+            {
+                Shared.ProxySupport.Load();
+            }
+            catch
+            {
+            }
+
             // 提权实例:把落盘的安装选项读回来,并直接落到进度页开跑。
             // 这样用户在向导里填的东西不用重填,而且全程只有一次 UAC。
             if (DevOptions.Uninstall)
             {
                 InstallSession.Current.Mode = SessionMode.Uninstall;
+            }
+
+            // 修复模式:不用走向导 —— 装到哪儿只有安装记录知道,直接读回来开跑。
+            // 记录读不到就退回普通安装流程(没记录时"修复"无从谈起)。
+            if (DevOptions.Repair && !DevOptions.Uninstall)
+            {
+                if (InstallSession.Current.SetupRepair())
+                {
+                    DevOptions.ForceStartPage((int)WizardPage.Progress);
+                }
+                else
+                {
+                    Shared.InstallLogger.Write("--repair:没有安装记录,按普通安装处理");
+                }
             }
 
             // 无人值守:跳过向导,直接进进度页开跑
@@ -274,7 +299,7 @@ namespace DshInstaller
             {
                 System.Windows.Forms.MessageBox.Show(
                     message,
-                    "大肥鱼Go安装程序",
+                    "Dafeiyu-Go 安装程序",
                     System.Windows.Forms.MessageBoxButtons.OK,
                     System.Windows.Forms.MessageBoxIcon.Error);
             }

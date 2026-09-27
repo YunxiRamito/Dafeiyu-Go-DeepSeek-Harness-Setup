@@ -287,7 +287,7 @@ namespace DshInstaller
 
             _titleText = new TextBlock
             {
-                Text = Localization.IsChinese ? "大肥鱼Go安装程序" : "Dafeiyu-Go Setup",
+                Text = Localization.IsChinese ? "Dafeiyu-Go 安装程序" : "Dafeiyu-Go Setup",
                 FontSize = 12,
                 // 不要设 LineHeight / BlockLineHeight:那个"块行高"会把多余空间塞在基线下方,
                 // 把字形往上顶,结果是文字视觉中心和左边的徽章对不齐(实测就是这样)。
@@ -775,7 +775,7 @@ namespace DshInstaller
 
         private void ConfigureWindow()
         {
-            Title = Localization.IsChinese ? "大肥鱼Go安装程序" : "Dafeiyu-Go Setup";
+            Title = Localization.IsChinese ? "Dafeiyu-Go 安装程序" : "Dafeiyu-Go Setup";
 
             IntPtr handle = WindowNative.GetWindowHandle(this);
             WindowId windowId = Win32Interop.GetWindowIdFromWindow(handle);
@@ -1448,7 +1448,7 @@ namespace DshInstaller
             if (_titleText != null)
             {
                 _titleText.Text = Localization.IsChinese
-                    ? "大肥鱼Go安装程序"
+                    ? "Dafeiyu-Go 安装程序"
                     : "Dafeiyu-Go Setup";
             }
 
@@ -1466,7 +1466,7 @@ namespace DshInstaller
             }
 
             // 窗口标题也跟着语言走
-            Title = Localization.IsChinese ? "大肥鱼Go安装程序" : "Dafeiyu-Go Setup";
+            Title = Localization.IsChinese ? "Dafeiyu-Go 安装程序" : "Dafeiyu-Go Setup";
 
             ApplyChrome();
         }

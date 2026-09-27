@@ -48,6 +48,17 @@ namespace DshInstaller
                 TempRoot = Path.Combine(Path.GetTempPath(), "DSH-Installer"),
             };
 
+            // 本机已经够新的组件直接复用(用户勾了"强制重装"就不复用)。
+            // 必须在这里填:提权实例读的是这份计划文件,内存里的选择传不过去。
+            options.ForceReinstall = session.ForceReinstall || DevOptions.ForceReinstall;
+            if (!options.ForceReinstall)
+            {
+                options.ReusableComponents = ComponentReuse.Detect(report);
+            }
+
+            // 修复模式也要跟着计划文件走,否则提权实例跑的是"普通安装"。
+            options.Repair = session.Repair || DevOptions.Repair;
+
             // 缺 Node 才装;检测结果缺席时按"要装"处理
             ComponentStatus node = report == null ? null : report["node"];
             options.InstallNode = node == null || !node.IsSatisfied;
@@ -126,10 +137,55 @@ namespace DshInstaller
                 TempRoot = Path.Combine(Path.GetTempPath(), "DSH-Installer"),
             };
 
+            // 无人值守也复用本机已有的组件(加 --force-reinstall 可关掉)。
+            // 这里真跑一次检测:静默安装常常跑在"已经装好 Node 的 CI 机器"上,
+            // 少了这一步就会白下一份 30 MB 的便携版。
+            options.ForceReinstall = DevOptions.ForceReinstall;
+            if (!options.ForceReinstall)
+            {
+                try
+                {
+                    options.ReusableComponents = ComponentReuse.Detect(
+                        DshInstaller.Shared.Detection.EnvironmentProbe.Run(
+                            string.IsNullOrWhiteSpace(DevOptions.DshRoot) ? null : DevOptions.DshRoot));
+                }
+                catch
+                {
+                    // 检测失败就按"没有可复用的"走 —— 顶多多下一份,不能因此装不上
+                    options.ReusableComponents = new System.Collections.Generic.List<ReusableComponent>();
+                }
+            }
+
             string root = options.AllUsers ? InstallSession.MachineRoot : InstallSession.UserRoot;
 
+            // 修复模式:装到哪儿只有安装记录知道,先按记录来。
+            // 命令行显式给了目录的话,以命令行为准(下面会自动覆盖)。
+            options.Repair = DevOptions.Repair;
+            if (options.Repair)
+            {
+                InstallerState state = ConfigStore.Load();
+                if (state != null)
+                {
+                    if (string.IsNullOrWhiteSpace(DevOptions.DshRoot) && !string.IsNullOrWhiteSpace(state.DshRoot))
+                    {
+                        root = state.DshRoot;
+                    }
+
+                    options.ComponentsRoot = state.ComponentsRoot;
+                    options.LauncherRoot = state.LauncherRoot;
+                    options.CreateDesktopShortcut = state.DesktopShortcut;
+                    options.CreateStartMenuShortcut = state.DesktopShortcut;
+                    options.EnableAutostart = state.Autostart;
+                    options.InstallGit = state.InstallGit;
+                    options.InstallPnpm = state.InstallPnpm;
+                    options.InstallPython = state.InstallPython;
+                }
+            }
+
             options.ComponentsRoot = string.IsNullOrWhiteSpace(DevOptions.ComponentsRoot)
-                ? Path.Combine(root, "components")
+                ? (string.IsNullOrWhiteSpace(options.ComponentsRoot)
+                    ? Path.Combine(root, "components")
+                    : options.ComponentsRoot)
                 : DevOptions.ComponentsRoot;
 
             options.DshRoot = string.IsNullOrWhiteSpace(DevOptions.DshRoot)

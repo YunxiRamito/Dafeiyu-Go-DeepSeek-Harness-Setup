@@ -26,6 +26,9 @@ namespace DshInstaller.Shared.Install
         public const string IdAutostart = "autostart";
         public const string IdVerify = "verify";
         public const string IdPath = "path";
+
+        /// <summary>修复模式的开场步骤:核对装过的东西还在不在。</summary>
+        public const string IdRepair = "repair";
         public const string IdDotNetRuntime = "runtime-dotnet";
         public const string IdWinAppRuntime = "runtime-winapprt";
         public const string IdUninstaller = "uninstaller";
@@ -284,6 +287,15 @@ namespace DshInstaller.Shared.Install
                 context.Log("node.exe 在,但缺 npm.cmd,重新解压一份完整的");
             }
 
+            // 本机这份够新就直接用 —— 30 MB 的下载可以省掉,也不用再占一份磁盘。
+            // 这一句必须在 DryRun 之前:演练模式也该如实说"这一步不用干活"。
+            if (o.CanReuse("node"))
+            {
+                context.Report(SharedText.T("已检测到，将直接使用", "Found on this PC — using it"), 100);
+                context.Log("复用本机 Node " + o.Reusable("node").Version + ":" + o.ReusePath("node"));
+                return;
+            }
+
             if (o.DryRun)
             {
                 context.Report(SharedText.T("演练模式,不实际下载", "Dry run, not downloading"), 100);
@@ -425,7 +437,7 @@ namespace DshInstaller.Shared.Install
                 return;
             }
 
-            string npmCmd = FindNpm(o.ComponentsRoot);
+            string npmCmd = FindNpm(o);
             if (npmCmd == null)
             {
                 throw new InvalidOperationException(
@@ -451,13 +463,14 @@ namespace DshInstaller.Shared.Install
                 + " --no-audit --no-fund --loglevel=error";
 
             context.Log("npm " + arguments);
-            context.Log("node 目录:" + Path.Combine(o.ComponentsRoot, "node"));
+            context.Log("node 目录:" + ResolveNodeDirectory(o));
 
             // npm 走一个临时 .cmd 包装:
             //   1. 显式 set PATH 带上便携版 node 目录 —— 否则 npm 的生命周期脚本
             //      (koffi 的 cnoke.cjs 就调 node)会报 "'node' is not recognized"(实测踩过);
+            //      复用本机 Node 时这个目录就是本机那份所在目录,道理一样;
             //   2. 顺便避开长命令行在 cmd 里的引号地狱。
-            string nodeDir = Path.Combine(o.ComponentsRoot, "node");
+            string nodeDir = ResolveNodeDirectory(o);
             string wrapper = Path.Combine(o.TempRoot, "npm-install.cmd");
             Directory.CreateDirectory(o.TempRoot);
 
@@ -677,10 +690,18 @@ namespace DshInstaller.Shared.Install
                 }
 
                 // 万一正好赶上"刚发版、npmmirror 还没同步"这个空窗期:
-                // 先问一句,没同步就催它一下、等一会儿(有上限)。
-                // 主要防线其实是发版流程(同步好之前不更新清单),这里只是兜底 ——
-                // 毕竟用户不该为"发布节奏"买单。
-                await EnsureNpmMirrorReady(context, release.Version, token).ConfigureAwait(false);
+                // **问一句就走,不等**。
+                //
+                // 以前这里是"催同步 + 等 5 秒,最多 4 轮" —— 实测(2026-09-27,虚拟机)
+                // 整整白等 21 秒,最后还是没同步、改用后面的源。用户看到的就是
+                // "部署启动器卡住不动",而且这 21 秒一点用都没有。
+                // 现在的规矩:没同步就当场把它从候选里去掉,直接走后面的源;
+                // 慢一点也比原地干等强,发版节奏不该让用户买单。
+                if (!await IsNpmMirrorReadyAsync(npm, token).ConfigureAwait(false))
+                {
+                    context.Log("npmmirror 还没这一版,不等了,直接用后面的下载源:" + npm);
+                    urls.Remove(npm);
+                }
             }
 
             // 扩展名故意写成 .bin:候选里既有 npm 的 .tgz 也有 GitHub 的 .zip,
@@ -802,7 +823,23 @@ namespace DshInstaller.Shared.Install
             string gitDir = Path.Combine(o.ComponentsRoot, "git");
             string gitExe = Path.Combine(gitDir, "cmd", "git.exe");
 
-            if (File.Exists(gitExe) || FindOnPath("git.exe") != null)
+            if (File.Exists(gitExe))
+            {
+                context.Report(SharedText.T("已就绪,跳过", "Already available, skipping"), 100);
+                return;
+            }
+
+            // 先看"本机这份够新吗",再看"PATH 里有没有"。
+            // 顺序有意义:复用要报出版本和路径,而 FindOnPath 那条只报"跳过",
+            // 用户看进度页时想知道用的是哪一份。
+            if (o.CanReuse("git"))
+            {
+                context.Report(SharedText.T("已检测到，将直接使用", "Found on this PC — using it"), 100);
+                context.Log("复用本机 Git " + o.Reusable("git").Version + ":" + o.ReusePath("git"));
+                return;
+            }
+
+            if (FindOnPath("git.exe") != null)
             {
                 context.Report(SharedText.T("已就绪,跳过", "Already available, skipping"), 100);
                 return;
@@ -872,7 +909,21 @@ namespace DshInstaller.Shared.Install
             string pnpmDir = Path.Combine(o.ComponentsRoot, "pnpm");
             string pnpmExe = Path.Combine(pnpmDir, "pnpm.exe");
 
-            if (File.Exists(pnpmExe) || FindOnPath("pnpm.cmd") != null || FindOnPath("pnpm.exe") != null)
+            if (File.Exists(pnpmExe))
+            {
+                context.Report(SharedText.T("已就绪,跳过", "Already available, skipping"), 100);
+                return;
+            }
+
+            // 同 Git:复用的那条要报版本,放在 PATH 兜底之前。
+            if (o.CanReuse("pnpm"))
+            {
+                context.Report(SharedText.T("已检测到，将直接使用", "Found on this PC — using it"), 100);
+                context.Log("复用本机 pnpm " + o.Reusable("pnpm").Version + ":" + o.ReusePath("pnpm"));
+                return;
+            }
+
+            if (FindOnPath("pnpm.cmd") != null || FindOnPath("pnpm.exe") != null)
             {
                 context.Report(SharedText.T("已就绪,跳过", "Already available, skipping"), 100);
                 return;
@@ -928,52 +979,27 @@ namespace DshInstaller.Shared.Install
         }
 
         /// <summary>
-        /// 等 npmmirror 把这一版同步好。
+        /// 问一句 npmmirror 有没有同步好这一版。**只问一次,不等、不催、不重试。**
         ///
-        /// 为什么要等:npm 上是发出去了,但 npmmirror 要过一会儿才镜像到。
-        /// 而安装器**只认 npmmirror 这条路**(其他候选都是 GitHub 系,几十 KB/s),
-        /// 正好卡在空窗里的用户就会被慢一路。
-        ///
-        /// 等不到也不报错 —— 照常走后面的候选,慢总比装不上好。
+        /// 为什么要问:加速线路下 npmmirror 比 GitHub 系快两个数量级(实测 9.8 MB/s vs 几十 KB/s),
+        /// 同步好了就该用它;但"没同步好"的时候,以前那套等待逻辑纯属白等(实测 21 秒)。
+        /// 探测本身给 4 秒上限 —— 探不出来就当没同步,直接换源。
         /// </summary>
-        private static async Task EnsureNpmMirrorReady(
-            InstallContext context, string version, CancellationToken token)
+        private static async Task<bool> IsNpmMirrorReadyAsync(string url, CancellationToken token)
         {
-            string url = LauncherFeed.NpmMirrorUrl(version);
-
-            for (int attempt = 1; attempt <= 4; attempt++)
+            if (string.IsNullOrEmpty(url))
             {
-                if (token.IsCancellationRequested)
-                {
-                    return;
-                }
-
-                bool ready = await Task.Run(delegate { return UrlIsReady(url); }, token)
-                    .ConfigureAwait(false);
-
-                if (ready)
-                {
-                    return;
-                }
-
-                // 催 npmmirror 按需同步(它确实有这个接口)
-                RequestNpmSync();
-
-                context.Log("npmmirror 还没这一版(第 " + attempt + "/4 次),催同步后等 5 秒");
-                context.Report(SharedText.T(
-                    "准备中 · 正在等待镜像同步", "Preparing · waiting for the mirror to catch up"), 8);
-
-                try
-                {
-                    await Task.Delay(5000, token).ConfigureAwait(false);
-                }
-                catch (OperationCanceledException)
-                {
-                    return;
-                }
+                return false;
             }
 
-            context.Log("npmmirror 迟迟没同步,改用后面的下载源(GitHub 系,会慢一些)");
+            try
+            {
+                return await Task.Run(delegate { return UrlIsReady(url); }, token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                return false;
+            }
         }
 
         /// <summary>探一下这个地址现在能不能下(HEAD 就够)。</summary>
@@ -981,43 +1007,19 @@ namespace DshInstaller.Shared.Install
         {
             try
             {
-                using (System.Net.Http.HttpClient client = new System.Net.Http.HttpClient())
+                // 用下载引擎那份 HttpClient —— 它带着用户的代理设置。
+                // 新开一个 HttpClient 会绕开代理,结果是"设了代理反而探不到最快的源"。
+                using (System.Net.Http.HttpRequestMessage request =
+                    new System.Net.Http.HttpRequestMessage(System.Net.Http.HttpMethod.Head, url))
+                using (System.Net.Http.HttpResponseMessage response =
+                    DownloadEngine.ProbeHead(request, TimeSpan.FromSeconds(4)))
                 {
-                    client.Timeout = TimeSpan.FromSeconds(8);
-
-                    using (System.Net.Http.HttpRequestMessage request =
-                        new System.Net.Http.HttpRequestMessage(System.Net.Http.HttpMethod.Head, url))
-                    using (System.Net.Http.HttpResponseMessage response = client.Send(request))
-                    {
-                        return response.IsSuccessStatusCode;
-                    }
+                    return response != null && response.IsSuccessStatusCode;
                 }
             }
             catch
             {
                 return false;
-            }
-        }
-
-        /// <summary>催 npmmirror 同步这个包(失败就算了,不影响主流程)。</summary>
-        private static void RequestNpmSync()
-        {
-            try
-            {
-                using (System.Net.Http.HttpClient client = new System.Net.Http.HttpClient())
-                {
-                    client.Timeout = TimeSpan.FromSeconds(8);
-
-                    string api = "https://registry.npmmirror.com/-/package/"
-                        + LauncherFeed.NpmPackage + "/syncs";
-
-                    using (client.PutAsync(api, null).GetAwaiter().GetResult())
-                    {
-                    }
-                }
-            }
-            catch
-            {
             }
         }
 
@@ -1150,6 +1152,13 @@ namespace DshInstaller.Shared.Install
             if (File.Exists(pythonExe))
             {
                 context.Report(SharedText.T("已就绪,跳过", "Already available, skipping"), 100);
+                return;
+            }
+
+            if (o.CanReuse("python"))
+            {
+                context.Report(SharedText.T("已检测到，将直接使用", "Found on this PC — using it"), 100);
+                context.Log("复用本机 Python " + o.Reusable("python").Version + ":" + o.ReusePath("python"));
                 return;
             }
 
@@ -1700,20 +1709,24 @@ namespace DshInstaller.Shared.Install
             // 便携组件默认不在 PATH 里,外面命令行敲 node / git / pnpm 会找不到,
             // DSH 的部分插件也会因此失败。这里把它们加进去。
             // Python 故意不加:embeddable 包里的 python.exe 会盖掉用户自己装的 Python。
+            //
+            // 复用本机那份时写的是**本机那份的目录**(PathEditor 会去重,本来就在 PATH 里
+            // 就什么都不动)—— 免得用户明明用的是 C:\Program Files\nodejs,我们却往 PATH 里
+            // 塞一个空的 <组件目录>\node。
             List<string> wanted = new List<string>();
             if (o.InstallNode)
             {
-                wanted.Add(Path.Combine(o.ComponentsRoot, "node"));
+                wanted.Add(o.ReuseDirectory("node") ?? Path.Combine(o.ComponentsRoot, "node"));
             }
 
             if (o.InstallGit)
             {
-                wanted.Add(Path.Combine(o.ComponentsRoot, "git", "cmd"));
+                wanted.Add(o.ReuseDirectory("git") ?? Path.Combine(o.ComponentsRoot, "git", "cmd"));
             }
 
             if (o.InstallPnpm)
             {
-                wanted.Add(Path.Combine(o.ComponentsRoot, "pnpm"));
+                wanted.Add(o.ReuseDirectory("pnpm") ?? Path.Combine(o.ComponentsRoot, "pnpm"));
             }
 
             if (wanted.Count == 0)
@@ -1909,6 +1922,13 @@ namespace DshInstaller.Shared.Install
         {
             List<InstallStep> plan = new List<InstallStep>();
 
+            // 修复模式:先核对一遍"该在的东西还在不在",再照常跑下面的步骤
+            // —— 那几步本来就是"有就跳过、没有才补",正好当修复用。
+            if (options.Repair)
+            {
+                plan.Add(RepairScan(options));
+            }
+
             // ---- 必选:运行库 → Node → DSH 本体 → 启动器 → 卸载入口 → 快捷方式 / PATH / 自启
             if (options.InstallDotNetRuntime)
             {
@@ -1992,8 +2012,117 @@ namespace DshInstaller.Shared.Install
             return plan;
         }
 
-        public static InstallStep RecommendedPlugins(InstallOptions options)
+        /// <summary>
+        /// 修复模式的第一步:核对"该在的东西还在不在"。
+        ///
+        /// 只核对**我们装过的东西**(按安装记录里的路径),不扫全盘;
+        /// 报告也只说结论,细节进日志。核对完不中止 —— 缺的东西由后面的步骤补上。
+        /// </summary>
+        public static InstallStep RepairScan(InstallOptions options)
         {
+            return new InstallStep
+            {
+                Id = IdRepair,
+                Title = SharedText.T("检查已装文件", "Check installed files"),
+                Required = false,
+                Run = delegate(InstallContext context, CancellationToken token)
+                {
+                    return Task.Run(delegate
+                    {
+                        if (options.DryRun)
+                        {
+                            context.Report(SharedText.T("演练模式,只检查不补文件", "Dry run: check only, nothing will be repaired"), 100);
+                        }
+
+                        List<string> missing = new List<string>();
+
+                        CheckFile(context, options.DshRoot,
+                            Path.Combine(options.DshRoot ?? string.Empty, WellKnown.DshMarker),
+                            SharedText.T("DSH 本体", "DSH core"), missing);
+
+                        CheckFile(context, options.LauncherRoot,
+                            Path.Combine(options.LauncherRoot ?? string.Empty, WellKnown.LauncherExe),
+                            SharedText.T("启动器", "Launcher"), missing);
+
+                        CheckFile(context, options.LauncherRoot,
+                            Path.Combine(options.LauncherRoot ?? string.Empty, WellKnown.UninstallerExe),
+                            SharedText.T("卸载程序", "Uninstaller"), missing);
+
+                        CheckUninstallEntry(context, missing);
+
+                        if (missing.Count == 0)
+                        {
+                            context.Report(SharedText.T("没有发现缺失，无需修复", "Nothing is missing"), 100);
+                            return;
+                        }
+
+                        context.Report(
+                            SharedText.T(
+                                "发现 " + missing.Count + " 项需要修复，正在补齐",
+                                missing.Count + " item(s) to repair; fixing now"),
+                            30);
+                    }, token);
+                },
+            };
+        }
+
+        private static void CheckFile(
+            InstallContext context, string root, string path, string label, List<string> missing)
+        {
+            if (string.IsNullOrWhiteSpace(root))
+            {
+                return;
+            }
+
+            try
+            {
+                if (File.Exists(path))
+                {
+                    return;
+                }
+            }
+            catch
+            {
+                return;
+            }
+
+            context.Log("缺失:" + label + " -> " + path);
+            missing.Add(label);
+        }
+
+        /// <summary>卸载入口没了的话,"应用和功能"里就找不到这个程序了 —— 修的时候一并补。</summary>
+        private static void CheckUninstallEntry(InstallContext context, List<string> missing)
+        {
+            try
+            {
+                using (Microsoft.Win32.RegistryKey key =
+                    Microsoft.Win32.Registry.CurrentUser.OpenSubKey(WellKnown.RegistryUninstallKey))
+                {
+                    if (key != null)
+                    {
+                        return;
+                    }
+                }
+
+                using (Microsoft.Win32.RegistryKey key =
+                    Microsoft.Win32.Registry.LocalMachine.OpenSubKey(WellKnown.RegistryUninstallKey))
+                {
+                    if (key != null)
+                    {
+                        return;
+                    }
+                }
+            }
+            catch
+            {
+                return;
+            }
+
+            context.Log("缺失:卸载入口(注册表)");
+            missing.Add(SharedText.T("卸载入口", "Uninstall entry"));
+        }
+
+        public static InstallStep RecommendedPlugins(InstallOptions options)        {
             return new InstallStep
             {
                 Id = IdRecommendedPlugins,
@@ -2041,16 +2170,23 @@ namespace DshInstaller.Shared.Install
         }
 
         /// <summary>
-        /// 下载中的细节行,格式刻意做成"阶段 · 速度 · 已下/总量",
-        /// 因为下载几十上百 MB 时总进度条走得慢,用户需要知道"在动、多快、还剩多少"。
+        /// 下载中的细节行,格式刻意做成"阶段 · 速度 · 已下/总量 · 当前镜像",
+        /// 因为下载几十上百 MB 时总进度条走得慢,用户需要知道"在动、多快、还剩多少、走的哪条路"。
         /// </summary>
         private static string DescribeDownload(DownloadProgress progress)
         {
             string speed = string.IsNullOrEmpty(progress.SpeedText) ? "--" : progress.SpeedText;
-            return SharedText.T("下载中", "Downloading")
+            string line = SharedText.T("下载中", "Downloading")
                 + " · " + speed
                 + " · " + DownloadProgress.FormatBytes(progress.ReceivedBytes)
                 + " / " + DownloadProgress.FormatBytes(progress.TotalBytes);
+
+            if (!string.IsNullOrEmpty(progress.SourceLabel))
+            {
+                line += " · " + progress.SourceLabel;
+            }
+
+            return line;
         }
         /// <summary>DSH 本体装完大约这个体积(MB),用来把 npm 的体积增长折算成百分比。</summary>
         private const double ExpectedDshSizeMb = 230;
@@ -2085,12 +2221,28 @@ namespace DshInstaller.Shared.Install
                 return 0;
             }
         }
-        private static string FindNpm(string componentsRoot)
+        /// <summary>这次真正要用哪个 node 目录:复用本机的那份,还是自己解的便携版。</summary>
+        private static string ResolveNodeDirectory(InstallOptions options)
         {
+            string reused = options.ReuseDirectory("node");
+            if (!string.IsNullOrWhiteSpace(reused))
+            {
+                return reused;
+            }
+
+            return Path.Combine(options.ComponentsRoot, "node");
+        }
+
+        private static string FindNpm(InstallOptions options)
+        {
+            // 复用的 Node:目录跟着那份走,别再埋头去组件目录里找。
+            string nodeDirectory = ResolveNodeDirectory(options);
             string[] candidates = new string[]
             {
-                Path.Combine(componentsRoot, "node", "npm.cmd"),
-                Path.Combine(componentsRoot, "node", "npm"),
+                Path.Combine(nodeDirectory, "npm.cmd"),
+                Path.Combine(nodeDirectory, "npm"),
+                Path.Combine(options.ComponentsRoot, "node", "npm.cmd"),
+                Path.Combine(options.ComponentsRoot, "node", "npm"),
             };
 
             for (int i = 0; i < candidates.Length; i++)

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -61,6 +61,8 @@ namespace DshInstaller.Pages
             ReasonLabel.Text = Localization.T("failed.reasons");
             RollbackLabel.Text = Localization.T("failed.rollback");
             ManualLabel.Text = Localization.T("failed.manual");
+            LogLabel.Text = Localization.T("log.export.hint");
+            ExportLogButton.Content = Localization.T("log.export.button");
 
             // 用户自己点"取消"时:没有东西"失败",也不必给手动下载入口 ——
             // 那不是故障,是他不想装了。只留"已经撤销了什么",让他确认状态干净。
@@ -136,6 +138,11 @@ namespace DshInstaller.Pages
             AddLink("Node.js", "https://nodejs.org/en/download");
             AddLink(Localization.IsChinese ? "DSH 本体(npm)" : "DSH core (npm)", "https://www.npmjs.com/package/" + WellKnown.DshPackage);
             AddLink(Localization.T("failed.link.launcher"), "https://github.com/" + WellKnown.LauncherRepository + "/releases/latest");
+        }
+
+        private void OnExportLog(object sender, RoutedEventArgs e)
+        {
+            LogExportUi.Export(this, LogStatus);
         }
 
         private UIElement BuildReasonRow(string title, string message)
