@@ -27,12 +27,35 @@ namespace DshInstaller
 
         public static string Pick(string title, string currentPath)
         {
+            return Show(title, currentPath, true);
+        }
+
+        /// <summary>
+        /// 选一个**文件**(导入 .dym 备份包时用)。
+        ///
+        /// 刻意不设文件类型过滤:COMDLG_FILTERSPEC 要手工 Marshal 一个结构体数组,
+        /// 写错就是崩溃,而收益只是"对话框里默认显示 *.dym" —— 不值得。
+        /// 用户选中什么由业务层再校验(扩展名不对就拒绝)。
+        /// </summary>
+        public static string PickFile(string title, string currentPath)
+        {
+            return Show(title, currentPath, false);
+        }
+
+        private static string Show(string title, string currentPath, bool folders)
+        {
             try
             {
                 IFileOpenDialog dialog = (IFileOpenDialog)new FileOpenDialog();
 
-                // 只能选目录 + 必须真实存在
-                dialog.SetOptions(FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM | FOS_PATHMUSTEXIST);
+                // 选目录时多一个 FOS_PICKFOLDERS;选文件时只要求"真实存在"
+                uint options = FOS_FORCEFILESYSTEM | FOS_PATHMUSTEXIST;
+                if (folders)
+                {
+                    options |= FOS_PICKFOLDERS;
+                }
+
+                dialog.SetOptions(options);
 
                 if (!string.IsNullOrWhiteSpace(title))
                 {

@@ -76,6 +76,57 @@ namespace DshInstaller.Shared.Backup
 
         public const string GroupSessions = "sessions";
 
+        /// <summary>组定义的唯一出处:哪些目录算用户数据、包内前缀是什么、默认勾不勾。</summary>
+        private sealed class GroupTemplate
+        {
+            public string Id;
+            public string NameZh;
+            public string NameEn;
+            public string RelativePath;
+            public string ArchivePrefix;
+            public bool ByDefault;
+        }
+
+        private static readonly GroupTemplate[] Templates =
+        {
+            new GroupTemplate
+            {
+                Id = GroupProfiles,
+                NameZh = "配置与插件清单",
+                NameEn = "Settings and plug-in list",
+                RelativePath = @".dsh\profiles",
+                ArchivePrefix = ".dsh/profiles",
+                ByDefault = true,
+            },
+            new GroupTemplate
+            {
+                Id = GroupSkills,
+                NameZh = "技能",
+                NameEn = "Skills",
+                RelativePath = "skills",
+                ArchivePrefix = "skills",
+                ByDefault = true,
+            },
+            new GroupTemplate
+            {
+                Id = GroupPlugins,
+                NameZh = "插件文件",
+                NameEn = "Plug-in files",
+                RelativePath = "plugins",
+                ArchivePrefix = "plugins",
+                ByDefault = true,
+            },
+            new GroupTemplate
+            {
+                Id = GroupSessions,
+                NameZh = "会话与缓存",
+                NameEn = "Sessions and cache",
+                RelativePath = @".dsh\storages",
+                ArchivePrefix = ".dsh/storages",
+                ByDefault = false,
+            },
+        };
+
         /// <summary>列出这台机器上有哪些可备份的数据(不存在的组不会出现)。</summary>
         public static List<BackupGroup> Describe(string dshRoot)
         {
@@ -85,78 +136,93 @@ namespace DshInstaller.Shared.Backup
                 return groups;
             }
 
-            Add(
-                groups,
-                GroupProfiles,
-                "配置与插件清单",
-                "Settings and plug-in list",
-                Path.Combine(dshRoot, ".dsh", "profiles"),
-                ".dsh/profiles",
-                true);
+            for (int index = 0; index < Templates.Length; index++)
+            {
+                GroupTemplate template = Templates[index];
+                string path = Path.Combine(
+                    dshRoot,
+                    template.RelativePath.Replace('\\', Path.DirectorySeparatorChar));
 
-            Add(
-                groups,
-                GroupSkills,
-                "技能",
-                "Skills",
-                Path.Combine(dshRoot, "skills"),
-                "skills",
-                true);
+                bool exists = false;
+                try
+                {
+                    exists = Directory.Exists(path);
+                }
+                catch
+                {
+                }
 
-            Add(
-                groups,
-                GroupPlugins,
-                "插件文件",
-                "Plug-in files",
-                Path.Combine(dshRoot, "plugins"),
-                "plugins",
-                true);
+                if (!exists)
+                {
+                    continue;
+                }
 
-            Add(
-                groups,
-                GroupSessions,
-                "会话与缓存",
-                "Sessions and cache",
-                Path.Combine(dshRoot, ".dsh", "storages"),
-                ".dsh/storages",
-                false);
+                groups.Add(ToGroup(template, path));
+            }
 
             return groups;
         }
 
-        private static void Add(
-            List<BackupGroup> groups,
-            string id,
-            string nameZh,
-            string nameEn,
-            string sourcePath,
-            string archivePrefix,
-            bool byDefault)
+        /// <summary>
+        /// 列出**备份包里**有哪些组(装完导入时用这个)。
+        ///
+        /// 为什么不能拿 Describe:全新机器上 .dsh/skills/plugins 还不存在,
+        /// 按磁盘状态列会一个都列不出来 —— 而用户手里正好拿着一个装满东西的备份包。
+        /// </summary>
+        public static List<BackupGroup> DescribeFromArchive(
+            string archivePath,
+            Action<string> log)
         {
-            bool exists = false;
-            try
+            List<BackupGroup> groups = new List<BackupGroup>();
+
+            string error;
+            List<DymEntry> entries = DymArchive.List(archivePath, log, out error);
+            if (entries.Count == 0)
             {
-                exists = Directory.Exists(sourcePath);
-            }
-            catch
-            {
+                return groups;
             }
 
-            if (!exists)
+            for (int index = 0; index < Templates.Length; index++)
             {
-                return;
+                GroupTemplate template = Templates[index];
+                bool found = false;
+
+                for (int entryIndex = 0; entryIndex < entries.Count; entryIndex++)
+                {
+                    string path = entries[entryIndex].Path;
+                    if (String.IsNullOrWhiteSpace(path))
+                    {
+                        continue;
+                    }
+
+                    if (path.StartsWith(template.ArchivePrefix, StringComparison.OrdinalIgnoreCase))
+                    {
+                        found = true;
+                        break;
+                    }
+                }
+
+                if (found)
+                {
+                    groups.Add(ToGroup(template, null));
+                }
             }
 
-            groups.Add(new BackupGroup
+            return groups;
+        }
+
+        private static BackupGroup ToGroup(GroupTemplate template, string sourcePath)
+        {
+            return new BackupGroup
             {
-                Id = id,
-                NameZh = nameZh,
-                NameEn = nameEn,
+                Id = template.Id,
+                NameZh = template.NameZh,
+                NameEn = template.NameEn,
                 SourcePath = sourcePath,
-                ArchivePrefix = archivePrefix,
-                SelectedByDefault = byDefault,
+                ArchivePrefix = template.ArchivePrefix,
+                SelectedByDefault = template.ByDefault,
                 Exists = true
-            });
+            };
         }
 
         /// <summary>
