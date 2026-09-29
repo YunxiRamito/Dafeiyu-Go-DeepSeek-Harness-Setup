@@ -151,6 +151,16 @@ namespace DshInstaller.Shared.Install
                     cancellationToken);
             }
 
+            // 装完自检:pnpm 退出码 0 不代表 node_modules 里真有这些插件。
+            // 少了这一步,故障表现是"安装器说装好了、重启 DSH 报无法解析 bundle"(实测踩过)。
+            List<string> missing = FindMissingPlugins(profileDirectory, linkedKeys);
+            if (missing.Count > 0)
+            {
+                throw new InvalidOperationException(
+                    "插件装完了但文件没落地(pnpm 没真的装上):"
+                    + String.Join(", ", missing.ToArray()));
+            }
+
             Report(report, "推荐插件安装完成", 100);
         }
 
@@ -371,6 +381,9 @@ namespace DshInstaller.Shared.Install
             }
 
             DateTime startedUtc = DateTime.UtcNow;
+            // pnpm 的原话得留几行:只记退出码的话,真原因(比如
+            // ERR_PNPM_NO_MATCHING_VERSION)全丢,用户只能等 DSH 启动时报一堆看不懂的错。
+            List<string> recent = new List<string>();
             ProcessRunner.Result result;
             using (Timer heartbeat = new Timer(
                 delegate
@@ -409,9 +422,13 @@ namespace DshInstaller.Shared.Install
                     30 * 60 * 1000,
                     delegate(string line)
                     {
-                        if (!String.IsNullOrWhiteSpace(line) && log != null)
+                        if (!String.IsNullOrWhiteSpace(line))
                         {
-                            log("  [" + display + "] " + line.Trim());
+                            Remember(recent, line);
+                            if (log != null)
+                            {
+                                log("  [" + display + "] " + line.Trim());
+                            }
                         }
                     },
                     extraPath,
@@ -427,11 +444,7 @@ namespace DshInstaller.Shared.Install
             if (!result.Ok)
             {
                 throw new InvalidOperationException(
-                    "下载插件失败: "
-                    + display
-                    + "（退出码 "
-                    + result.ExitCode
-                    + "）");
+                    DescribePnpmFailure(result, "下载插件失败: " + display, recent));
             }
         }
 
@@ -454,6 +467,8 @@ namespace DshInstaller.Shared.Install
             }
 
             DateTime startedUtc = DateTime.UtcNow;
+            // 同上:失败时要把 pnpm 自己的话带出来
+            List<string> recent = new List<string>();
             ProcessRunner.Result result;
             using (Timer heartbeat = new Timer(
                 delegate
@@ -487,9 +502,13 @@ namespace DshInstaller.Shared.Install
                     30 * 60 * 1000,
                     delegate(string line)
                     {
-                        if (!String.IsNullOrWhiteSpace(line) && log != null)
+                        if (!String.IsNullOrWhiteSpace(line))
                         {
-                            log("  " + line.Trim());
+                            Remember(recent, line);
+                            if (log != null)
+                            {
+                                log("  " + line.Trim());
+                            }
                         }
                     },
                     extraPath,
@@ -505,10 +524,126 @@ namespace DshInstaller.Shared.Install
             if (!result.Ok)
             {
                 throw new InvalidOperationException(
-                    label
-                    + "失败（退出码 "
-                    + result.ExitCode
-                    + "）");
+                    DescribePnpmFailure(result, label + "失败", recent));
+            }
+        }
+
+        /// <summary>记下 pnpm 输出的最后几行(给失败信息用)。</summary>
+        private static void Remember(List<string> lines, string line)
+        {
+            if (lines == null || String.IsNullOrWhiteSpace(line))
+            {
+                return;
+            }
+
+            string trimmed = line.Trim();
+            if (trimmed.StartsWith("Progress:", StringComparison.OrdinalIgnoreCase)
+                || trimmed.StartsWith("Packages:", StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            lines.Add(trimmed);
+            while (lines.Count > 8)
+            {
+                lines.RemoveAt(0);
+            }
+        }
+
+        /// <summary>
+        /// 失败信息 = 退出码 + pnpm 自己的最后几行。
+        ///
+        /// 为什么非要带原话:只写"退出码 1"的话,真原因(比如坏依赖导致的
+        /// ERR_PNPM_NO_MATCHING_VERSION)完全看不到,用户只能等 DSH 启动时报一堆看不懂的错。
+        /// </summary>
+        private static string DescribePnpmFailure(
+            ProcessRunner.Result result,
+            string headline,
+            List<string> recent)
+        {
+            string message = headline
+                + "（退出码 "
+                + (result == null ? -1 : result.ExitCode)
+                + "）";
+            if (recent == null || recent.Count == 0)
+            {
+                return message;
+            }
+
+            int take = Math.Min(5, recent.Count);
+            List<string> tail = recent.GetRange(recent.Count - take, take);
+            return message + " " + String.Join(" / ", tail.ToArray());
+        }
+
+        /// <summary>
+        /// 自检:这些插件在 profile 的 node_modules 里真的有目录吗。
+        /// 返回缺失的那些(空列表 = 都装上了)。
+        /// </summary>
+        private static List<string> FindMissingPlugins(
+            string profileDirectory,
+            IList<string> keys)
+        {
+            List<string> missing = new List<string>();
+            if (keys == null)
+            {
+                return missing;
+            }
+
+            for (int index = 0; index < keys.Count; index++)
+            {
+                string key = keys[index];
+                if (String.IsNullOrWhiteSpace(key))
+                {
+                    continue;
+                }
+
+                string directory = Path.Combine(
+                    profileDirectory,
+                    "node_modules",
+                    key.Replace('/', Path.DirectorySeparatorChar));
+                if (!Directory.Exists(directory))
+                {
+                    missing.Add(key);
+                }
+            }
+
+            return missing;
+        }
+
+        /// <summary>
+        /// 把 profile 的 package.json 还原到安装前的样子。
+        ///
+        /// 装插件失败时,profile 里可能已经留下了 DSH 认不出来的条目 ——
+        /// 留着它的后果不是"这次插件没装上",而是"下次启动 DSH 直接报无法解析 bundle"。
+        /// 所以失败就把这份底放回去;本来就文件不存在(全新安装)就删掉。
+        /// </summary>
+        internal static void RestoreProfileSnapshot(
+            string profileFile,
+            string backup,
+            Action<string> log)
+        {
+            try
+            {
+                if (backup != null)
+                {
+                    File.WriteAllText(profileFile, backup);
+                }
+                else if (File.Exists(profileFile))
+                {
+                    File.Delete(profileFile);
+                }
+
+                if (log != null)
+                {
+                    log("已把 profile 还原到安装前的状态:" + profileFile);
+                }
+            }
+            catch (Exception exception)
+            {
+                if (log != null)
+                {
+                    log("还原 profile 失败:" + exception.Message);
+                }
             }
         }
 

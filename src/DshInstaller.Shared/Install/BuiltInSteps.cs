@@ -2134,6 +2134,30 @@ namespace DshInstaller.Shared.Install
                 {
                     return Task.Run(delegate
                     {
+                        // 装之前给 profile 的 package.json 留个底:失败或被取消就还原。
+                        //
+                        // 为什么非留不可:插件接连装,万一第 2 个失败,第 1 个的条目已经写进
+                        // profile 了,而"部署到 profile"那趟 pnpm install 还没跑 ——
+                        // 结果是条目在、文件不在,DSH 下次启动直接报"无法解析 bundle"。
+                        // 这个错以前会安静地留到用户下一次启动才炸(实测踩过)。
+                        string profileFile = Path.Combine(
+                            context.Options.DshRoot,
+                            ".dsh",
+                            "profiles",
+                            "web",
+                            "package.json");
+                        string profileBackup = null;
+                        try
+                        {
+                            if (File.Exists(profileFile))
+                            {
+                                profileBackup = File.ReadAllText(profileFile);
+                            }
+                        }
+                        catch
+                        {
+                        }
+
                         try
                         {
                             RecommendedPluginInstaller.Install(
@@ -2148,10 +2172,19 @@ namespace DshInstaller.Shared.Install
                         }
                         catch (OperationCanceledException)
                         {
+                            RecommendedPluginInstaller.RestoreProfileSnapshot(
+                                profileFile,
+                                profileBackup,
+                                context.Log);
                             throw;
                         }
                         catch (Exception exception)
                         {
+                            RecommendedPluginInstaller.RestoreProfileSnapshot(
+                                profileFile,
+                                profileBackup,
+                                context.Log);
+
                             // This is an optional convenience step. A plugin
                             // failure must never turn the whole install into
                             // "partially completed" or block the launcher.
