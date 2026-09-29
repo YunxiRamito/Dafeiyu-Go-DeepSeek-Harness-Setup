@@ -1849,6 +1849,13 @@ namespace DshInstaller.Shared.Install
 
             context.Log("校验通过");
 
+            // 把"这次铺下去的东西"记成一份快照(安装清单)。
+            //
+            // 它是装完之后扫描实际落地的文件生成的,**不是**构建期常量 ——
+            // 所以升级、修复、启动器自更新之后重新生成一份即可,
+            // 不会出现"版本一变就报文件被改坏"的误报(见 InstallManifest 的注释)。
+            InstallManifest.Write(o, WellKnown.InstallerVersion, context.Log);
+
             // 记下这次装到了哪里。卸载器完全依赖这份状态才知道该删什么 ——
             // 不能靠"按默认路径重新猜",用户可能把组件装到别处。
             try
@@ -2049,6 +2056,57 @@ namespace DshInstaller.Shared.Install
                             SharedText.T("卸载程序", "Uninstaller"), missing);
 
                         CheckUninstallEntry(context, missing);
+
+                        // 安装清单:核对"装的时候记下来的东西"是不是还都对得上。
+                        // 快照过期(用户升级过 DSH 或启动器)不算损坏,只提示会重新生成;
+                        // 版本一致才逐文件比大小和哈希,比出来不一致才是真的出问题。
+                        try
+                        {
+                            InstallManifestCheck manifestCheck = InstallManifest.Check(
+                                options,
+                                WellKnown.InstallerVersion);
+
+                            if (!manifestCheck.ManifestExists)
+                            {
+                                context.Log("还没有安装清单(首次安装或清单被删了),这一步跳过");
+                            }
+                            else if (manifestCheck.SnapshotStale)
+                            {
+                                context.Log(
+                                    "安装清单是旧版本的快照(记的是 "
+                                    + (manifestCheck.RecordedInstallerVersion ?? "未知")
+                                    + "),按「重新生成」处理,不当成损坏");
+                            }
+                            else if (manifestCheck.Ok)
+                            {
+                                context.Log(
+                                    "安装清单校验通过:"
+                                    + manifestCheck.CheckedFiles
+                                    + " 个文件都对得上");
+                            }
+                            else
+                            {
+                                context.Log(
+                                    "安装清单发现 "
+                                    + manifestCheck.Problems.Count
+                                    + " 处不一致:");
+
+                                for (int index = 0;
+                                    index < manifestCheck.Problems.Count;
+                                    index++)
+                                {
+                                    ManifestProblem problem =
+                                        manifestCheck.Problems[index];
+                                    context.Log(
+                                        "  " + problem.Path + " —— " + problem.Reason);
+                                    missing.Add(problem.Path);
+                                }
+                            }
+                        }
+                        catch (Exception exception)
+                        {
+                            context.Log("安装清单校验出错(不影响修复):" + exception.Message);
+                        }
 
                         if (missing.Count == 0)
                         {
