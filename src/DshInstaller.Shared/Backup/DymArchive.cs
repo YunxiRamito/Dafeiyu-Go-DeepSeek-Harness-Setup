@@ -224,7 +224,8 @@ namespace DshInstaller.Shared.Backup
             string workingDirectory,
             Action<string, double> report,
             Action<string> log,
-            CancellationToken token)
+            CancellationToken token,
+            bool append = false)
         {
             if (String.IsNullOrWhiteSpace(archive))
             {
@@ -256,7 +257,7 @@ namespace DshInstaller.Shared.Backup
                     Directory.CreateDirectory(directory);
                 }
 
-                if (File.Exists(archive))
+                if (!append && File.Exists(archive))
                 {
                     File.Delete(archive);
                 }
