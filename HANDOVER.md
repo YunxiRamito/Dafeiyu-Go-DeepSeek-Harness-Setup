@@ -24,17 +24,17 @@
 - `ProcessRunner` 支持取消令牌，pnpm/git 子进程会随安装取消而结束。
 - 卸载检查新增 `ComponentsRoot`，并保留对 `%LOCALAPPDATA%\DeepSeekHarness\Boot` 的清理。
 
-当前阻塞：
+当前状态（2026-09-27）：
 
-- SignPath 尚未配置。安装器仓库没有 `SIGNPATH_API_TOKEN` secret，
-  也没有五个 SignPath repository variables，tag 发布会直接失败。
-- 不应绕过签名发布正式 `v1.4.9.1`。
+- **签名这条路断了**：SignPath Foundation 的免费签名申请**未通过**，官方构建从此走未签名路径，
+  README / SIGNING.md / CI 发布说明模板都已按"不签名"改写。别再把"配 SignPath 变量"当发布前置。
+- `v1.5.0` 已按**未签名**方式发布（安装器 + 启动器两个仓库的 Release、启动器 npm 包、`manifest.json` 都更新了）。
 
 下一步：
 
-1. 配置 SignPath 仓库变量和 secret。
-2. 在虚拟机完整验证安装、取消回滚、推荐插件 4 线程下载和卸载。
-3. 推送 `v1.4.9.1` tag，等待签名的 Setup 和启动器 ZIP 发布完成。
+1. 在虚拟机上完整验证 1.5.0：安装、修复安装、卸载保留数据、代理、日志导出。
+2. 想签名的话只能走付费服务（Azure Trusted Signing 等，见 SIGNING.md）——那属于另一轮工作。
+
 
 > **下个大版本硬要求**：安装器改为静态或自包含编译，不再依赖目标机预装
 > .NET 8 和 Windows App Runtime；安装器、卸载器与辅助文件放入

@@ -11,7 +11,7 @@
 - 大陆 CDN 与官方下载严格分流。
 - 取消回滚已修复两个根因：回滚使用独立 token；安装开始前记录顶层目录。
 - `C:\Program Files\DeepSeek Harness` 残留问题已在虚拟机复现并定位，代码已修复。
-- 当前唯一发布阻塞是 SignPath 仓库变量和 secret 未配置。
+- 签名已无免费方案（SignPath 申请未通过），官方构建**未签名**；`v1.5.0` 已按未签名方式发布。
 
 ---
 
@@ -61,6 +61,7 @@ G:\DeepSeek DSH\DeepSeek Harness   (启动器部署目标)
 | 12 | 启动器分发 | **不打包进安装器**,改成读启动器仓库的 `manifest.json` 现下最新版 |
 
 **关于签名**:免费方案已确认——自签名对陌生用户无效;SignPath.io 对开源项目免费(要申请,可签 exe);Azure Trusted Signing 约 $10/月。结论:先不签,README 里写清楚。
+（2026-09-27 更新：SignPath 的申请被拒，免费方案没了；现状是不签名发布，README / SIGNING.md 已按此改写。要签只能上付费服务。）
 
 ---
 

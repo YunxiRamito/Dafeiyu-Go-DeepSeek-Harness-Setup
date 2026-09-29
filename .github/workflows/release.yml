@@ -202,12 +202,11 @@ jobs:
           files: ${{ steps.pack.outputs.exe }}
           generate_release_notes: true
           body: |
-            大肥鱼Go${{ env.SIGNING_ENABLED == 'true' && '已签名' || '未签名' }}单文件安装包 `DSH-Installer-Setup.exe`(约 11 MB)。
+            Dafeiyu-Go${{ env.SIGNING_ENABLED == 'true' && '已签名' || '未签名' }}单文件安装包 `DSH-Installer-Setup.exe`(约 11 MB)。
 
             双击即用:安装器会先检查 .NET 8 桌面运行时与 Windows App Runtime,
             缺哪个下哪个,装好之后再拉起向导。
 
             SHA256: `${{ steps.pack.outputs.sha256 }}`
 
-            Free code signing provided by [SignPath.io](https://about.signpath.io),
-            certificate by [SignPath Foundation](https://signpath.org) —— ${{ env.SIGNING_ENABLED == 'true' && 'Windows 发布者: SignPath Foundation' || '本版尚未签名(等待 SignPath Foundation 审批),首次运行会有 SmartScreen 提示' }}
+            ${{ env.SIGNING_ENABLED == 'true' && '> 本包已带数字签名,Windows 发布者显示为 SignPath Foundation。' || '> **关于代码签名**:本项目目前没有代码签名 —— SignPath Foundation 的免费签名申请未通过,官方构建就是未签名的。首次运行 Windows 会弹 SmartScreen,这是未签名软件的预期行为,不代表文件有害:点「更多信息」→「仍要运行」即可。想核对再运行,就比对上面的 SHA256。' }}

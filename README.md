@@ -350,7 +350,9 @@ Thanks to the DeepSeek Harness and Windows App SDK communities.
 
 **代码签名政策**
 
-Free code signing provided by [SignPath.io](https://about.signpath.io), certificate by [SignPath Foundation](https://signpath.org).
+**本项目目前不做代码签名。** SignPath Foundation 的免费签名申请未通过，官方构建不带数字签名；SmartScreen 的提示请按上一节的办法过掉。详见 [SIGNING.md](SIGNING.md)。
+
+This project currently ships **unsigned** builds. The free signing application to SignPath Foundation was declined, so official builds carry no digital signature; see the SmartScreen section above and [SIGNING.md](SIGNING.md).
 
 - Committers and reviewers / 提交与审查: [YunxiRamito](https://github.com/YunxiRamito)
 - Approvers / 批准人: [YunxiRamito](https://github.com/YunxiRamito)
