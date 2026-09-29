@@ -18,4 +18,13 @@
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
   </PropertyGroup>
 
+  <!--
+    .dym 备份包用的是**真 7z** 格式,所以要带一个 7z 工具。
+    选 7zr.exe 的理由:588 KB,单文件、无依赖、公开领域(7-Zip 的 Igor Pavlov 释出),
+    不需要额外挂第三方声明;而完整的 7z.dll + 包装层要多几百 KB 和一层 P/Invoke。
+  -->
+  <ItemGroup>
+    <EmbeddedResource Include="Backup\7zr.exe" />
+  </ItemGroup>
+
 </Project>
