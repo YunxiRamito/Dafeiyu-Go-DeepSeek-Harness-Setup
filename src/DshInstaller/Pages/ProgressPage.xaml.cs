@@ -358,7 +358,18 @@ namespace DshInstaller.Pages
             MainWindow window = App.MainWindowInstance;
             if (window != null)
             {
-                window.Navigate(report.Succeeded ? WizardPage.Done : WizardPage.Failed, null);
+                // 装成功之后先问一句"要不要把以前的备份导回来"。
+                // 修复模式和演练模式都不问:修复不该动用户数据,演练模式本来就不落盘。
+                InstallSession session = InstallSession.Current;
+                bool askImport = report.Succeeded
+                    && !session.Repair
+                    && !DevOptions.DryRun;
+
+                window.Navigate(
+                    report.Succeeded
+                        ? (askImport ? WizardPage.Import : WizardPage.Done)
+                        : WizardPage.Failed,
+                    null);
             }
         }
 

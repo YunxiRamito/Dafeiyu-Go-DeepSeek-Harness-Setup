@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="DshInstaller.Pages.ImportPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:DshInstaller.Controls"
+    Background="Transparent">
+
+    <controls:PageScaffold x:Name="Scaffold" Title="" Subtitle="">
+        <StackPanel Spacing="12">
+
+            <!-- 第一步:挑一个备份包 -->
+            <Border
+                CornerRadius="{ThemeResource CardCornerRadius}"
+                Padding="16,14"
+                Background="{ThemeResource CardBackgroundBrush}"
+                BorderBrush="{ThemeResource CardBorderBrush}"
+                BorderThickness="1">
+                <StackPanel Spacing="10">
+                    <TextBlock
+                        x:Name="PickTitle"
+                        FontSize="14"
+                        FontWeight="SemiBold" />
+                    <TextBlock
+                        x:Name="PickDesc"
+                        FontSize="12.5"
+                        TextWrapping="Wrap"
+                        Foreground="{ThemeResource SecondaryTextBrush}" />
+                    <StackPanel
+                        Orientation="Horizontal"
+                        Spacing="8">
+                        <Button
+                            x:Name="PickButton"
+                            Click="PickButton_Click" />
+                        <TextBlock
+                            x:Name="ArchiveText"
+                            VerticalAlignment="Center"
+                            FontSize="12.5"
+                            TextWrapping="Wrap"
+                            Foreground="{ThemeResource SecondaryTextBrush}" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- 第二步:勾要恢复哪些(读包里的内容列出来) -->
+            <Border
+                x:Name="GroupsCard"
+                Visibility="Collapsed"
+                CornerRadius="{ThemeResource CardCornerRadius}"
+                Padding="16,14"
+                Background="{ThemeResource CardBackgroundBrush}"
+                BorderBrush="{ThemeResource CardBorderBrush}"
+                BorderThickness="1">
+                <StackPanel Spacing="10">
+                    <TextBlock
+                        x:Name="GroupsTitle"
+                        FontSize="14"
+                        FontWeight="SemiBold" />
+                    <StackPanel
+                        x:Name="GroupsHost"
+                        Spacing="6" />
+                    <TextBlock
+                        x:Name="ConflictLabel"
+                        FontSize="12.5"
+                        Foreground="{ThemeResource SecondaryTextBrush}" />
+                    <ComboBox
+                        x:Name="ConflictBox"
+                        MinWidth="220"
+                        HorizontalAlignment="Left" />
+                    <Button
+                        x:Name="ImportButton"
+                        Click="ImportButton_Click"
+                        Visibility="Collapsed" />
+                </StackPanel>
+            </Border>
+
+            <!-- 第三步:进度 -->
+            <StackPanel
+                x:Name="ProgressPanel"
+                Visibility="Collapsed"
+                Spacing="8">
+                <ProgressBar
+                    x:Name="ImportProgress"
+                    Height="6" />
+                <TextBlock
+                    x:Name="ImportDetail"
+                    FontSize="12.5"
+                    TextWrapping="Wrap"
+                    Foreground="{ThemeResource SecondaryTextBrush}" />
+            </StackPanel>
+
+            <TextBlock
+                x:Name="StatusText"
+                FontSize="12.5"
+                TextWrapping="Wrap" />
+        </StackPanel>
+    </controls:PageScaffold>
+</Page>

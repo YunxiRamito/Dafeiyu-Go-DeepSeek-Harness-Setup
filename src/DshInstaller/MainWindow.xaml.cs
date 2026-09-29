@@ -37,6 +37,14 @@ namespace DshInstaller
         LauncherLocation,
         Confirm,
         Progress,
+
+        /// <summary>
+        /// 装完之后的导入页:问一句"有没有以前的备份要搬回来"。
+        /// 排在进度页和完成页之间 —— 装完才问,因为那时候 DSH 目录已经就位,
+        /// 还原下来的文件有地方落。
+        /// </summary>
+        Import,
+
         Done,
 
         /// <summary>卸载确认页(卸载模式才用)。</summary>
@@ -185,6 +193,12 @@ namespace DshInstaller
                 Type = typeof(Pages.ProgressPage),
                 ShowBack = false,
                 ShowNext = false,
+            };
+            _pages[WizardPage.Import] = new PageInfo
+            {
+                Type = typeof(Pages.ImportPage),
+                ShowBack = false,
+                NextText = "结束",
             };
             _pages[WizardPage.Done] = new PageInfo
             {

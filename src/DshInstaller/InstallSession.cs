@@ -102,6 +102,12 @@ namespace DshInstaller
         /// </summary>
         public string LauncherVersionSpec { get; set; } = string.Empty;
 
+        /// <summary>
+        /// 装完之后有没有真的导入过备份(导入页填)。
+        /// 记下来只是为了让完成页能说一句"数据已恢复",不参与安装决策。
+        /// </summary>
+        public bool ImportedBackup { get; set; }
+
         /// <summary>各组件根目录(便携组件解压到这儿)。</summary>
         public string ComponentsRoot { get; set; }
 
