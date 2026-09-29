@@ -34,6 +34,8 @@ namespace DshInstaller
                 LauncherRoot = session.LauncherRoot,
                 UseExistingDsh = session.UseExistingDsh,
                 SourcePreference = session.SourcePreference,
+                DshVersion = session.DshVersionSpec,
+                LauncherVersion = session.LauncherVersionSpec,
                 InstallGit = session.InstallGit,
                 InstallPnpm = session.InstallPnpm,
                 InstallPython = session.InstallPython,

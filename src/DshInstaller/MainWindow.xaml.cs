@@ -26,6 +26,13 @@ namespace DshInstaller
         /// <summary>先问 DSH 装哪 —— 组件目录的默认值是它的子目录,所以它得排在前面。</summary>
         DshLocation,
         Components,
+
+        /// <summary>
+        /// 版本页:选 DSH 本体装哪个版本。排在"组件"之后、推荐插件之前 ——
+        /// 和组件页同属"装之前选什么"这一档(步骤指示器上也用同一档)。
+        /// </summary>
+        Versions,
+
         RecommendedPlugins,
         LauncherLocation,
         Confirm,
@@ -157,6 +164,11 @@ namespace DshInstaller
                 NextText = "继续",
             };
             _pages[WizardPage.Components] = new PageInfo { Type = typeof(Pages.ComponentsPage) };
+            _pages[WizardPage.Versions] = new PageInfo
+            {
+                Type = typeof(Pages.VersionsPage),
+                NextText = "继续",
+            };
             _pages[WizardPage.DshLocation] = new PageInfo { Type = typeof(Pages.DshLocationPage) };
             _pages[WizardPage.RecommendedPlugins] = new PageInfo
             {

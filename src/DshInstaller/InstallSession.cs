@@ -88,6 +88,20 @@ namespace DshInstaller
         /// <summary>装给谁。</summary>
         public InstallScope Scope { get; set; } = InstallScope.CurrentUser;
 
+        /// <summary>
+        /// 版本页选的 DSH 本体版本(空 = 跟默认)。
+        ///
+        /// 存的就是 npm 的版本说明,装的时候原样用 —— 不在这里做解析,
+        /// 免得"界面上选的"和"真正装下去的"是两回事。
+        /// </summary>
+        public string DshVersionSpec { get; set; } = string.Empty;
+
+        /// <summary>
+        /// 版本页选的启动器版本(空 = 跟默认)。**这一项界面暂时禁用**,
+        /// 字段先留着,以后接上不用再动数据结构。
+        /// </summary>
+        public string LauncherVersionSpec { get; set; } = string.Empty;
+
         /// <summary>各组件根目录(便携组件解压到这儿)。</summary>
         public string ComponentsRoot { get; set; }
 

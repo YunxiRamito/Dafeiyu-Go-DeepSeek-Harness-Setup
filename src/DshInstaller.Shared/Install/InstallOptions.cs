@@ -36,6 +36,22 @@ namespace DshInstaller.Shared.Install
         public bool InstallPnpm { get; set; }
         public bool InstallPython { get; set; }
 
+        /// <summary>
+        /// DSH 本体要装的版本(空 = 用 <see cref="WellKnown.DshPackageVersion"/> 那个默认)。
+        ///
+        /// 值就是 npm 的版本说明:可以是 `latest` / `next` 这类 tag,也可以是
+        /// `0.2.0-rc.1` / `^0.1.5-rc.1` 这样的版本或范围。由版本页填,安装时原样拼进 npm install。
+        /// </summary>
+        public string DshVersion { get; set; }
+
+        /// <summary>
+        /// 启动器要装的版本(空 = 跟默认)。
+        ///
+        /// **暂未实现**:版本页上这一项是禁用的(界面上写明「暂未开放」)。
+        /// 字段先留着,是为了让"升级通道"两边对齐 —— 以后接上只需要在这里填值。
+        /// </summary>
+        public string LauncherVersion { get; set; }
+
         /// <summary>推荐插件页选中的安装表达式；安装器会自动启用 pnpm。</summary>
         public List<string> RecommendedPluginSpecs { get; set; } =
             new List<string>();

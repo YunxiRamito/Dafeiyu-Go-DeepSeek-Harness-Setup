@@ -454,10 +454,29 @@ namespace DshInstaller.Shared.Install
             context.Report(SharedText.T("安装中 · 正在获取本体依赖（耗时较长）", "Installing · fetching the core dependencies (this may take a while)"), 20);
 
             string registry = MirrorSource.NpmRegistry(o.SourcePreference);
+
+            // 版本页选了就按它装,没选就用默认那个范围。
+            // 版本说明来自界面输入,拼进命令行之前先筛一遍字符 —— 它最终会进一个 .cmd,
+            // 不筛的话输入里带个引号或 & 就能往命令行里塞东西。
+            string dshSpec = WellKnown.DshPackageVersion;
+            if (!string.IsNullOrWhiteSpace(o.DshVersion))
+            {
+                string requested = SanitizeVersionSpec(o.DshVersion);
+                if (string.IsNullOrWhiteSpace(requested))
+                {
+                    throw new InvalidOperationException(
+                        SharedText.T(
+                            "版本号里有不认识的字符，只支持字母、数字和 . - _ ^ ~ > < = * + ：" + o.DshVersion,
+                            "The version contains unsupported characters. Only letters, digits and . - _ ^ ~ > < = * + are allowed: " + o.DshVersion));
+                }
+
+                dshSpec = requested;
+            }
+
             // 包名必须整体加引号:版本范围里的 ^ 在 cmd.exe 里是转义字符,
             // 不加引号会被 cmd 吃掉,变成 "@deepseek-ai/dsh@0.1.5-rc.1" 之类的错版本 → npm 退出码 1。
             string arguments =
-                "install \"" + WellKnown.DshPackage + "@" + WellKnown.DshPackageVersion + "\""
+                "install \"" + WellKnown.DshPackage + "@" + dshSpec + "\""
                 + " --prefix \"" + o.DshRoot + "\""
                 + " --registry " + registry
                 + " --no-audit --no-fund --loglevel=error";
@@ -2122,6 +2141,35 @@ namespace DshInstaller.Shared.Install
                     }, token);
                 },
             };
+        }
+
+        /// <summary>
+        /// 把版本说明筛成安全字符,只留 npm 版本语法用得上的那些
+        /// (字母、数字、. - _ ^ ~ &gt; &lt; = * +)。
+        /// 返回 null/空 = 含有不认识的字符,调用方应当报错而不是硬拼进命令行。
+        /// </summary>
+        private static string SanitizeVersionSpec(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return null;
+            }
+
+            string trimmed = value.Trim();
+            for (int index = 0; index < trimmed.Length; index++)
+            {
+                char c = trimmed[index];
+                bool allowed = char.IsLetterOrDigit(c)
+                    || c == '.' || c == '-' || c == '_'
+                    || c == '^' || c == '~' || c == '>' || c == '<'
+                    || c == '=' || c == '*' || c == '+';
+                if (!allowed)
+                {
+                    return null;
+                }
+            }
+
+            return trimmed;
         }
 
         private static void CheckFile(
