@@ -108,6 +108,12 @@ namespace DshInstaller
         /// </summary>
         public bool ImportedBackup { get; set; }
 
+        /// <summary>
+        /// 卸载前导出到的文件(导出页填)。只用来在完成页说一句"备份存在这儿",
+        /// 不参与卸载决策 —— 卸载照常进行,导不导出都不拦。
+        /// </summary>
+        public string ExportedBackupPath { get; set; }
+
         /// <summary>各组件根目录(便携组件解压到这儿)。</summary>
         public string ComponentsRoot { get; set; }
 

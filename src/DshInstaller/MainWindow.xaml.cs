@@ -53,6 +53,13 @@ namespace DshInstaller
         /// <summary>安装未完成页(失败或取消,且已回滚)。</summary>
         Failed,
 
+        /// <summary>
+        /// 卸载前的导出页。排在"确定卸载"之后、"选择要删什么"之前 ——
+        /// 用户点卸载的那一刻才是他可能想留点东西的时候,等卸完目录就没了。
+        /// 不想导出就点下一步跳过,不拦人。
+        /// </summary>
+        Export,
+
         /// <summary>卸载第二页:选择要删哪些、留哪些。</summary>
         UninstallItems,
     }
@@ -225,13 +232,17 @@ namespace DshInstaller
 
                 // 必须显式指定:默认"下一页"是按枚举序号 +1 算的,
                 // 而 Failed / UninstallItems 排在枚举后面,序号对不上。
-                NextOverride = WizardPage.UninstallItems,
+                NextOverride = WizardPage.Export,
             };
 
+            _pages[WizardPage.Export] = new PageInfo
+            {
+                Type = typeof(Pages.ExportPage),
+                NextText = "继续",
+            };
             _pages[WizardPage.UninstallItems] = new PageInfo
             {
-                Type = typeof(Pages.UninstallItemsPage),
-                ShowBack = true,
+                Type = typeof(Pages.UninstallItemsPage),                ShowBack = true,
                 NextText = "卸载",
                 NextOverride = WizardPage.Progress,
 
