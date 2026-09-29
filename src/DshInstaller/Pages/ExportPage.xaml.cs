@@ -202,8 +202,8 @@ namespace DshInstaller.Pages
                 ExportProgress.Value = 100;
                 ExportDetail.Text = archive;
                 StatusText.Text = Localization.IsChinese
-                    ? "导出好了。这个是 7z 格式，用 7-Zip / WinRAR 也能打开。点下一步继续卸载。"
-                    : "Exported. It is a real 7z archive. Continue to uninstall.";
+                    ? "导出好了。点下一步继续卸载。"
+                    : "Exported. Continue to uninstall.";
                 InstallSession.Current.ExportedBackupPath = archive;
             }
             else
