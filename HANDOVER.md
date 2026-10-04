@@ -1,17 +1,18 @@
 # 交接:大肥鱼Go / Dafeiyu-Go
 
-> 给下一个接手的人(或下一个 AI)。当前源码版本为 `1.5.2`（发布版本以 Releases 为准），启动器与安装器同版本同步发布。
+> 给下一个接手的人(或下一个 AI)。当前源码版本为 `1.5.3`（发布版本以 Releases 为准），启动器与安装器同版本同步发布。
 > 第一入口请先读父级 `G:\DeepSeek DSH\DSH Works\Project\Dafeiyu-Go\HANDOVER.md`，再读本文件、
 > `STATUS.md`、`HANDOVER-1.5.0-installer.md`、`RELEASE.md` 和 `TRANSITION.md`。
 
-最后更新:2026-10-04（README 整理与源码事实核对）
+最后更新:2026-10-04（v1.5.3 已发布）
 
-## v1.5.3 staged release handover（2026-10-04，待发布）
+## v1.5.3 发布交接（2026-10-04）
 
-- 已补齐本地发布说明：关于页只读健康预览与 allowlist JSON（无原始日志、无完整自动修复）；安装计划只读 ACL/提权警告；tar.gz 安全解包；重叠布局卸载保留数据；修复范围/自定义目录与 CLI 提权；Node 前缀边界；安装器 SHA 缺失时 fail-closed；复制与文档说明同步。
-- 验证：启动器安全/诊断 61 项、安装器 SHA 11 项、安装器计划/路径/ACL 30 项通过；Release 构建通过。
-- GUI、UAC、完整安装/卸载 e2e 尚未测试；symlink 用例因 Windows 创建权限不足跳过。仅覆盖明确边界，不声称所有安全问题都已解决。
-- 本节为 staged pending release，尚未发布；父级流程负责设置版本 `1.5.3`。未提交或推送。
+- 安装器 CI `37179657388`（commit `abf3a0a`）成功，已下载核验 SHA256 `69e770e068c997fec62956ce362250cba0cfd12d64491f96b03c1f943e7f9b88`；启动器 CI `37179772669`（commit `950d354`）成功，已下载核验 SHA256 `56a21d1057a392a4b5b24c3f2d74aa34fc98d529242dc02a188a5332045c66ec`。
+- npm 1.5.3 与 npmmirror 均已就绪（HTTP 200）；下载 tgz 完全一致，SHA256 `1d0af60ab658f15ecc216b02cfc7408be30e5d6747b478fdb1d57d87f8d4a9f5`，内含 ZIP 哈希与官方一致。
+- 版本内容：只读健康预览与白名单 JSON、安装计划、tar.gz 安全解包、保留数据保护、修复范围/自定义目录、Node 目录边界与缺失/无效 SHA256 停止更新；README 历史移出首页、使用真实宣传图、移除受版本控制的过时 1.3.21 归档。
+- 回归 61 + 11 + 30 项及 Release 构建通过；GUI、UAC、完整安装/卸载 e2e 未测；符号链接用例因 Windows 权限不足跳过。不保证所有安全问题均已解决或完整事务回滚。
+- 本轮仅收尾发布文档，未提交或推送；仓库提交由父级流程负责。
 
 ## 当前文档维护约定
 

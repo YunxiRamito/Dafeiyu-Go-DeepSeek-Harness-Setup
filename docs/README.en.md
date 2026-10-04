@@ -26,7 +26,7 @@ Suitable existing components are reused where possible. Use the welcome page's r
 | Node.js | At least 22.13.0; missing Node is installed as a portable Node 22 ZIP |
 | Runtimes | .NET 8 Desktop Runtime and Windows App Runtime 1.8; the bootstrapper installs missing or insufficient runtimes |
 
-The current source version is **1.5.2**; Releases determines the downloadable version. The WinUI 3 installer remains framework-dependent, not a self-contained offline bundle.
+The current source version is **1.5.3**; Releases determines the downloadable version. The WinUI 3 installer remains framework-dependent, not a self-contained offline bundle.
 
 ## What Changes
 
