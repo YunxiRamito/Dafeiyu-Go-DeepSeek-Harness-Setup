@@ -86,25 +86,19 @@ namespace DshInstaller.Shared.Install
                     {
                         return Task.Run(delegate
                         {
+                            List<string> protectedPaths = InstallPaths.ProtectedPaths(options);
                             if (options.RemoveDshCore)
                             {
-                                // 用户数据就在本体目录里(便携安装):.dsh 是技能/会话,plugins 是插件。
-                                // 默认这两个留着 —— 卸载的是程序,不是人家攒下来的东西。
-                                List<string> keep = new List<string>();
-                                if (options.KeepUserData && !string.IsNullOrWhiteSpace(options.DshRoot))
-                                {
-                                    keep.Add(Path.Combine(options.DshRoot, ".dsh"));
-                                    keep.Add(Path.Combine(options.DshRoot, "plugins"));
-                                }
-
                                 DeleteDirectory(context, options, options.DshRoot,
-                                    SharedText.T("DSH 本体", "DSH core"), keep);
+                                    SharedText.T("DSH 本体", "DSH core"),
+                                    InstallPaths.KeepsForTarget(options.DshRoot, protectedPaths));
                             }
 
                             if (options.RemoveComponents)
                             {
                                 DeleteDirectory(context, options, options.ComponentsRoot,
-                                    SharedText.T("便携组件", "portable components"));
+                                    SharedText.T("便携组件", "portable components"),
+                                    InstallPaths.KeepsForTarget(options.ComponentsRoot, protectedPaths));
                             }
                         }, token);
                     }));
@@ -170,27 +164,7 @@ namespace DshInstaller.Shared.Install
                                     Environment.SpecialFolder.LocalApplicationData),
                                 "DeepSeekHarness",
                                 "Boot");
-                            if (Directory.Exists(bootRoot))
-                            {
-                                foreach (string file in Directory.GetFiles(
-                                    bootRoot,
-                                    "*",
-                                    SearchOption.AllDirectories))
-                                {
-                                    try { File.Delete(file); } catch { }
-                                }
-
-                                foreach (string directory in Directory.GetDirectories(
-                                    bootRoot,
-                                    "*",
-                                    SearchOption.AllDirectories))
-                                {
-                                    try { Directory.Delete(directory, false); } catch { }
-                                }
-
-                                Directory.Delete(bootRoot, false);
-                                context.Log("已清理引导临时目录:" + bootRoot);
-                            }
+                            DeleteDirectory(context, options, bootRoot, SharedText.T("引导临时目录", "bootstrap temporary directory"));
                         }
                         catch (Exception exception)
                         {
@@ -276,7 +250,8 @@ namespace DshInstaller.Shared.Install
                 try
                 {
                     string shortcut = Path.Combine(place, WellKnown.UninstallerExe);
-                    if (File.Exists(shortcut))
+                    if (File.Exists(shortcut) && !InstallPaths.HasReparseAncestor(place)
+                        && !InstallPaths.ProtectedPaths(options).Exists(p => InstallPaths.Contains(p, shortcut)))
                     {
                         File.Delete(shortcut);
                         context.Log("已删除 " + shortcut);
@@ -295,7 +270,7 @@ namespace DshInstaller.Shared.Install
             {
                 if (Directory.Exists(home))
                 {
-                    Directory.Delete(home, true);
+                    DeleteDirectory(context, options, home, SharedText.T("安装器副本", "installer copy"));
                     context.Log("已删除安装器副本:" + home);
                 }
             }
@@ -388,7 +363,8 @@ namespace DshInstaller.Shared.Install
                 return 0;
             }
 
-            string root = componentsRoot.TrimEnd('\\');
+            string root;
+            try { root = InstallPaths.Canonical(componentsRoot); } catch { return 0; }
             int stopped = 0;
 
             System.Diagnostics.Process[] found;
@@ -421,7 +397,7 @@ namespace DshInstaller.Shared.Install
                     }
 
                     if (string.IsNullOrEmpty(exe)
-                        || exe.IndexOf(root, StringComparison.OrdinalIgnoreCase) != 0)
+                        || !InstallPaths.Contains(root, exe))
                     {
                         continue;
                     }
@@ -649,9 +625,9 @@ namespace DshInstaller.Shared.Install
         }
 
         /// <summary>
-        /// 把"要保留的路径"收拾干净:只认**真实存在**、而且在 root 里面的那些。
-        /// 不存在的、跑到 root 外面的(状态文件被手改过)一律丢掉 ——
-        /// 这种输入拿去拼路径很容易变成"删了不该删的地方"。
+        /// 规范化保护路径并按目录边界选择本删除目标内的保护项。
+        /// 不依赖路径是否存在，避免暂时不可访问被误判为无须保护。
+        /// 若删除目标位于保护项内部，保留整个目标。
         /// </summary>
         /// <remarks>public 是为了能单独跑测试:这段逻辑一旦出错,删掉的是用户的数据。</remarks>
         public static List<string> NormalizeKeeps(string root, List<string> keepPaths)
@@ -662,36 +638,8 @@ namespace DshInstaller.Shared.Install
                 return keeps;
             }
 
-            string prefix = root.TrimEnd('\\') + "\\";
+            return InstallPaths.KeepsForTarget(root, keepPaths);
 
-            for (int i = 0; i < keepPaths.Count; i++)
-            {
-                if (string.IsNullOrWhiteSpace(keepPaths[i]))
-                {
-                    continue;
-                }
-
-                try
-                {
-                    string full = Path.GetFullPath(keepPaths[i]).TrimEnd('\\');
-
-                    // 必须在 root 里面(不是 root 自己),否则不认
-                    if (!full.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
-                    {
-                        continue;
-                    }
-
-                    if (Directory.Exists(full) && !keeps.Contains(full))
-                    {
-                        keeps.Add(full);
-                    }
-                }
-                catch
-                {
-                }
-            }
-
-            return keeps;
         }
 
         /// <summary>
@@ -753,7 +701,7 @@ namespace DshInstaller.Shared.Install
                 }
 
                 failed += keepInside
-                    ? DeleteTreeKeeping(context, child, keep)
+                    ? ((File.GetAttributes(child) & FileAttributes.ReparsePoint) != 0 ? 1 : DeleteTreeKeeping(context, child, keep))
                     : DeleteTree(context, child);
             }
 
@@ -801,7 +749,12 @@ namespace DshInstaller.Shared.Install
             string full;
             try
             {
-                full = Path.GetFullPath(directory).TrimEnd('\\');
+                full = InstallPaths.Canonical(directory);
+                if (InstallPaths.HasReparseAncestor(full))
+                {
+                    context.Log("跳过包含目录链接的删除路径:" + full);
+                    return;
+                }
             }
             catch
             {
@@ -809,7 +762,8 @@ namespace DshInstaller.Shared.Install
                 return;
             }
 
-            if (full.Length <= 3 || IsUnsafePath(full))
+            if (full.Length <= 3 || IsUnsafePath(full)
+                || string.Equals(full, Path.TrimEndingDirectorySeparator(Path.GetPathRoot(full)), StringComparison.OrdinalIgnoreCase))
             {
                 context.Log("拒绝删除(看着像系统目录):" + full);
                 context.Report(label + SharedText.T("路径不安全,已跳过", " path looks unsafe, skipped"), 100);
@@ -834,7 +788,14 @@ namespace DshInstaller.Shared.Install
             try
             {
                 // 有要保留的子目录时走"选择性删除":程序文件清掉,用户数据原样留着。
-                List<string> keep = NormalizeKeeps(full, keepPaths);
+                List<string> keep = NormalizeKeeps(full, InstallPaths.ProtectedPaths(options));
+                if (keep.Exists(p => string.Equals(p, full, StringComparison.OrdinalIgnoreCase)))
+                {
+                    context.Log("保留整个保护目录:" + full);
+                    return;
+                }
+                if ((File.GetAttributes(full) & FileAttributes.ReparsePoint) != 0)
+                { context.Log("跳过目录链接:" + full); return; }
                 int failed = keep.Count == 0
                     ? DeleteTree(context, full)
                     : DeleteTreeKeeping(context, full, keep);
@@ -893,78 +854,24 @@ namespace DshInstaller.Shared.Install
         private static int DeleteTree(InstallContext context, string root)
         {
             int failed = 0;
-
-            string[] files;
             try
             {
-                files = Directory.GetFiles(root, "*", SearchOption.AllDirectories);
-            }
-            catch (Exception exception)
-            {
-                context.Log("枚举文件失败(改用顶层):" + exception.Message);
-                try
+                // Never follow junctions/symlinks into directories outside this deletion target.
+                if ((File.GetAttributes(root) & FileAttributes.ReparsePoint) != 0)
                 {
-                    files = Directory.GetFiles(root);
+                    Directory.Delete(root, false);
+                    return 0;
                 }
-                catch
+                foreach (string file in Directory.GetFiles(root))
                 {
-                    files = new string[0];
+                    try { File.SetAttributes(file, FileAttributes.Normal); File.Delete(file); }
+                    catch (Exception exception) { failed++; context.Log("删除文件失败:" + exception.Message); }
                 }
-            }
-
-            for (int i = 0; i < files.Length; i++)
-            {
-                try
-                {
-                    // 只读属性会让 Delete 直接失败,先摘掉
-                    File.SetAttributes(files[i], FileAttributes.Normal);
-                    File.Delete(files[i]);
-                }
-                catch (Exception exception)
-                {
-                    failed++;
-                    context.Log("删不掉(先跳过):" + files[i] + " -> " + exception.Message);
-                }
-            }
-
-            string[] dirs;
-            try
-            {
-                dirs = Directory.GetDirectories(root, "*", SearchOption.AllDirectories);
-            }
-            catch
-            {
-                dirs = new string[0];
-            }
-
-            // 深的先删,不然父目录被非空卡住
-            Array.Sort(dirs, delegate(string a, string b)
-            {
-                return b.Length.CompareTo(a.Length);
-            });
-
-            for (int i = 0; i < dirs.Length; i++)
-            {
-                try
-                {
-                    Directory.Delete(dirs[i], false);
-                }
-                catch
-                {
-                    // 子目录里还有删不掉的文件,留着让它报在最后
-                }
-            }
-
-            try
-            {
+                foreach (string child in Directory.GetDirectories(root))
+                    failed += DeleteTree(context, child);
                 Directory.Delete(root, false);
             }
-            catch (Exception exception)
-            {
-                failed++;
-                context.Log("最后那层目录没删掉:" + root + " -> " + exception.Message);
-            }
-
+            catch (Exception exception) { failed++; context.Log("删除目录失败:" + root + ":" + exception.Message); }
             return failed;
         }
 

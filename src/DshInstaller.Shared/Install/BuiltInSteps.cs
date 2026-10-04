@@ -1887,6 +1887,7 @@ namespace DshInstaller.Shared.Install
                 state.Scope = o.AllUsers ? "machine" : "user";
                 state.Autostart = o.EnableAutostart;
                 state.DesktopShortcut = o.CreateDesktopShortcut;
+                state.StartMenuShortcut = o.CreateStartMenuShortcut;
                 state.InstallGit = o.InstallGit;
                 state.InstallPnpm = o.InstallPnpm;
                 state.InstallPython = o.InstallPython;

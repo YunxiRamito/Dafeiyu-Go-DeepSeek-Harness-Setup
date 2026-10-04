@@ -1,13 +1,13 @@
 <Project>
   <PropertyGroup>
-    <InstallerVersion>1.5.2</InstallerVersion>
-    <InstallerVersionFull>1.5.2.0</InstallerVersionFull>
+    <InstallerVersion>1.5.3</InstallerVersion>
+    <InstallerVersionFull>1.5.3.0</InstallerVersionFull>
     <!--
       跟启动器同版本发:启动器更新时会核对安装器 Release 的 tag 与自己的目标版本,
       对不上就拒绝更新("安装器 v1.5.1 与启动器目标版本 v1.5.2 不一致")。
       所以安装器本体即使没改动,启动器一发版这边也得跟着打一个 tag。
     -->
-    <LauncherVersion>1.5.2</LauncherVersion>
+    <LauncherVersion>1.5.3</LauncherVersion>
     <DshPackage>@deepseek-ai/dsh</DshPackage>
     <DshPackageVersion>^0.1.5-rc.1</DshPackageVersion>
     <NodeLtsMajor>22</NodeLtsMajor>

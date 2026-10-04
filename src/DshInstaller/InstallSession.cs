@@ -54,7 +54,10 @@ namespace DshInstaller
 
             Repair = true;
             Mode = SessionMode.Install;
-            DshRoot = state.DshRoot;
+            var restored = new InstallOptions();
+            EffectiveInstallPlan.Restore(restored, state);
+            Scope = restored.AllUsers ? InstallScope.AllUsers : InstallScope.CurrentUser;
+            DshRoot = restored.DshRoot;
             LauncherRoot = string.IsNullOrWhiteSpace(state.LauncherRoot)
                 ? System.IO.Path.Combine(state.DshRoot, WellKnown.LauncherFolder)
                 : state.LauncherRoot;
@@ -76,7 +79,7 @@ namespace DshInstaller
             InstallPython = state.InstallPython;
             EnableAutostart = state.Autostart;
             CreateDesktopShortcut = state.DesktopShortcut;
-            CreateStartMenuShortcut = state.DesktopShortcut;
+            CreateStartMenuShortcut = restored.CreateStartMenuShortcut;
             AutostartChosen = true;
 
             return true;
@@ -211,35 +214,7 @@ namespace DshInstaller
         {
             get
             {
-                if (Scope == InstallScope.AllUsers)
-                {
-                    return true;
-                }
-
-                if (EnableAutostart)
-                {
-                    return true;
-                }
-
-                // 运行库是机器级的:缺了就得下载 + 静默安装,而那就必须管理员。
-                // 这一步不能漏 —— 漏了的话"仅为本用户"的用户会在进度页看到
-                // "安装失败(退出码 1638)"这种看不懂的东西。
-                if (Shared.Detection.RuntimeProbe.AnyMissing)
-                {
-                    return true;
-                }
-
-                // 还有第三种:"仅为本用户安装",可目录挑了 Program Files 之类的。
-                // 不提权的话会一路写失败(实测:Node 和 DSH 本体双双"失败",而用户
-                // 以为是自己哪里选错了)。界面上那时已经给过提示,所以这里该提就提。
-                if (!PathAccess.CanWriteWithoutElevation(ComponentsRoot)
-                    || !PathAccess.CanWriteWithoutElevation(DshRoot)
-                    || !PathAccess.CanWriteWithoutElevation(LauncherRoot))
-                {
-                    return true;
-                }
-
-                return false;
+                return InstallerPlan.ElevationReasons(InstallerPlan.Build()).Count > 0;
             }
         }
 

@@ -121,6 +121,12 @@ namespace DshInstaller
         /// 无人值守:从命令行参数组装选项(--silent 那一套)。
         /// 目录没给就按范围取默认值,省得调用方每次都写全。
         /// </summary>
+        public static System.Collections.Generic.List<string> ElevationReasons(InstallOptions options)
+        {
+            return EffectiveInstallPlan.ElevationReasons(options,
+                DshInstaller.Shared.Detection.RuntimeProbe.AnyMissing,
+                PathAccess.CanWriteWithoutElevation);
+        }
         public static InstallOptions FromCommandLine()
         {
             InstallOptions options = new InstallOptions
@@ -165,25 +171,16 @@ namespace DshInstaller
             options.Repair = DevOptions.Repair;
             if (options.Repair)
             {
-                InstallerState state = ConfigStore.Load();
-                if (state != null)
-                {
-                    if (string.IsNullOrWhiteSpace(DevOptions.DshRoot) && !string.IsNullOrWhiteSpace(state.DshRoot))
-                    {
-                        root = state.DshRoot;
-                    }
-
-                    options.ComponentsRoot = state.ComponentsRoot;
-                    options.LauncherRoot = state.LauncherRoot;
-                    options.CreateDesktopShortcut = state.DesktopShortcut;
-                    options.CreateStartMenuShortcut = state.DesktopShortcut;
-                    options.EnableAutostart = state.Autostart;
-                    options.InstallGit = state.InstallGit;
-                    options.InstallPnpm = state.InstallPnpm;
-                    options.InstallPython = state.InstallPython;
-                }
+                EffectiveInstallPlan.Restore(options, ConfigStore.Load());
+                if (DevOptions.ScopeSpecified) options.AllUsers = DevOptions.AllUsers;
+                if (DevOptions.NoShortcut) { options.CreateDesktopShortcut = false; options.CreateStartMenuShortcut = false; }
+                if (DevOptions.NoAutostart) options.EnableAutostart = false;
+                if (DevOptions.WantGit) options.InstallGit = true;
+                if (DevOptions.WantPnpm) options.InstallPnpm = true;
+                if (DevOptions.WantPython) options.InstallPython = true;
+                root = string.IsNullOrWhiteSpace(options.DshRoot)
+                    ? (options.AllUsers ? InstallSession.MachineRoot : InstallSession.UserRoot) : options.DshRoot;
             }
-
             options.ComponentsRoot = string.IsNullOrWhiteSpace(DevOptions.ComponentsRoot)
                 ? (string.IsNullOrWhiteSpace(options.ComponentsRoot)
                     ? Path.Combine(root, "components")
@@ -195,7 +192,8 @@ namespace DshInstaller
                 : DevOptions.DshRoot;
 
             options.LauncherRoot = string.IsNullOrWhiteSpace(DevOptions.LauncherRoot)
-                ? Path.Combine(options.DshRoot, WellKnown.LauncherFolder)
+                ? (string.IsNullOrWhiteSpace(options.LauncherRoot)
+                    ? Path.Combine(options.DshRoot, WellKnown.LauncherFolder) : options.LauncherRoot)
                 : DevOptions.LauncherRoot;
 
             // 具体装不装由步骤自己判断(存在就跳过),这里一律先安排上

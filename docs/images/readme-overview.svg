@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="360" viewBox="0 0 1120 360" role="img" aria-labelledby="title desc">
+<title id="title">大肥鱼 Go Setup 安装流程</title>
+<desc id="desc">选择安装位置和组件，检查并补齐依赖，部署 DSH 和启动器，完成后打开本地工作页面。流程示意，不是软件截图。</desc>
+<rect width="1120" height="360" rx="8" fill="#f5f7f8"/>
+<g font-family="Segoe UI, Microsoft YaHei, sans-serif">
+<text x="40" y="49" font-size="24" font-weight="700" fill="#152b32">Dafeiyu-Go Setup</text>
+<text x="40" y="80" font-size="15" fill="#51636b">从环境检测到快捷方式 · 一个向导完成部署</text>
+<text x="1080" y="49" text-anchor="end" font-size="13" fill="#63747b">流程示意 / NOT A SCREENSHOT</text>
+<g fill="#fff" stroke="#d7e0e3"><rect x="40" y="116" width="224" height="130" rx="8"/><rect x="312" y="116" width="224" height="130" rx="8"/><rect x="584" y="116" width="224" height="130" rx="8"/><rect x="856" y="116" width="224" height="130" rx="8"/></g>
+<g fill="#2479b1"><circle cx="70" cy="146" r="14"/><circle cx="342" cy="146" r="14"/><circle cx="614" cy="146" r="14"/><circle cx="886" cy="146" r="14"/></g>
+<g font-size="14" fill="#fff" text-anchor="middle"><text x="70" y="151">1</text><text x="342" y="151">2</text><text x="614" y="151">3</text><text x="886" y="151">4</text></g>
+<g font-size="20" font-weight="600" fill="#152b32"><text x="60" y="189">选择安装选项</text><text x="332" y="189">检查与补齐环境</text><text x="604" y="189">部署 DSH</text><text x="876" y="189">开始使用</text></g>
+<g font-size="14" fill="#51636b"><text x="60" y="218">安装位置 · 可选组件</text><text x="332" y="218">Node.js · 必需运行库</text><text x="604" y="218">本体 · 启动器 · 快捷方式</text><text x="876" y="218">从启动器进入本地页面</text></g>
+<g stroke="#69868d" stroke-width="2" fill="none"><path d="M274 181h28m-7-6 7 6-7 6"/><path d="M546 181h28m-7-6 7 6-7 6"/><path d="M818 181h28m-7-6 7 6-7 6"/></g>
+<path d="M40 276h1040" stroke="#d7e0e3"/>
+<text x="40" y="310" font-size="14" fill="#51636b">Windows x64 · 安装需要联网 · 需要系统权限时会请求提权</text>
+</g></svg>

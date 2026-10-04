@@ -1,362 +1,115 @@
-# 大肥鱼Go / Dafeiyu-Go Setup
+# 大肥鱼Go · Windows 安装器
 
-**大肥鱼Go，面向 DeepSeek Harness (DSH) 的一体化 Windows 安装程序。**
-**Dafeiyu-Go, an all-in-one Windows setup for DeepSeek Harness (DSH).**
+**把 DeepSeek Harness 的环境检测、组件安装和启动器部署交给一个向导。**
 
-仓库名 `Dafeiyu-Go-DeepSeek-Harness-Setup` · MIT 协议 / MIT License
+[下载安装包](https://github.com/YunxiRamito/Dafeiyu-Go-DeepSeek-Harness-Setup/releases/latest) · [English](docs/README.en.md) · [配套启动器](https://github.com/YunxiRamito/Dafeiyu-Go-DeepSeek-Harness-Click-To-Run) · [MIT](LICENSE)
 
-> **1.4.9 过渡版**：显示名称与界面先切换为“大肥鱼Go / Dafeiyu-Go”，
-> 安装包、卸载注册表键和数据目录保持兼容。详见 [`TRANSITION.md`](TRANSITION.md)。
+![大肥鱼Go 安装器下载源与推荐插件实机局部截图排版](docs/images/readme-promo.png)
 
----
+*实机截图排版，截图版本未标注（历史局部截图）；截图文件日期 2026-09-23，不代表当前版本界面。界面支持中文与英文，可在右上角切换。*
 
-## 这是什么 / What it is
+## 快速开始
 
-Dafeiyu-Go Setup 将「在一台干净的 Windows 机器上部署可用的 DSH」这一过程简化为一次双击。它负责检测环境、补齐缺失的依赖、安装 DSH 本体、部署启动器托盘程序、创建快捷方式，并提供独立的卸载程序。
+1. 在 [Releases](https://github.com/YunxiRamito/Dafeiyu-Go-DeepSeek-Harness-Setup/releases/latest) 下载 `DSH-Installer-Setup.exe` 并运行。
+2. 缺少运行库时，先确认下载与安装；按提示授予管理员权限。
+3. 选择下载源、安装范围与目录，再按需选择 pnpm / Git / Python、推荐插件、快捷方式和自启。
+4. 在确认页检查安装计划：目标目录、组件安装／复用、系统改动及提权原因；确认后点击「安装」。完成后通过启动器托盘或快捷方式打开 DSH。
 
-Dafeiyu-Go Setup reduces the task of getting DSH running on a clean Windows machine to a single double-click. It detects the environment, fills in missing prerequisites, installs DSH itself, lays down the launcher tray app, creates shortcuts, and ships a standalone uninstaller.
+已有且符合要求的组件会尽量复用；可选择强制重新下载。安装损坏时，可使用欢迎页的「修复安装」或 `--repair`。
 
-一个安装器，而非一系列手工步骤：
+## 安装前确认
 
-One installer instead of a series of manual steps:
-
-> 检测环境 → 补齐缺失项 → 安装 DSH 本体 → 部署启动器 → 创建快捷方式 → 可卸载
->
-> Detect → fill the gaps → install DSH → install the launcher → create shortcuts → uninstallable
-
-技术构成：向导界面用 **C# / .NET 8 / WinUI 3**（未打包应用形式），最外层引导程序用 **.NET Framework 4.x + WinForms** 编写。工程根目录就是 `DSH Installer\`。
-
-Under the hood: the wizard is a **C# / .NET 8 / WinUI 3** unpackaged app, and the outermost bootstrapper is written in **.NET Framework 4.x + WinForms**. The project root is the `DSH Installer\` directory itself.
-
----
-
-## 安装策略：全便携 / Install strategy: fully portable
-
-除了 Node 和两个运行库，其他可选组件（pnpm / Git / Python）都是解压到用户自选目录，不写入系统、不改动 PATH 之外的内容，卸载即删除目录。
-
-Apart from Node and two runtimes, every optional component (pnpm / Git / Python) is simply unpacked into a directory you choose. Nothing is written into the system, and uninstalling means deleting that directory.
-
-**唯一会动系统的只有两样：Node 和两个运行库。**
-
-**Only two things touch the system: Node, and the two runtimes.**
-
----
-
-## 系统要求 / Requirements
-
-| 项目 / Item | 要求 / Requirement |
+| 项目 | 要求 |
 | --- | --- |
-| 操作系统 / OS | Windows 10 1809（build 17763）及以上 / Windows 10 1809 (build 17763) or newer |
-| 架构 / Architecture | x64 |
-| 权限 / Privileges | 普通用户即可开始；选择「所有用户」或「开机自启」时提权 / Standard user to start; elevation only for "all users" or autostart |
-| 网络 / Network | 需要联网下载运行库与 DSH 本体 / Network access to fetch runtimes and DSH |
+| 系统 | Windows 10 1809（build 17763）或更新版本，x64 |
+| 网络 | **在线安装**；DSH、启动器及缺失组件需要下载 |
+| Node.js | 最低 22.13.0；缺失时下载 Node 22 系列便携版 |
+| 运行库 | .NET 8 桌面运行时、Windows App Runtime 1.8；缺失或版本不足时由引导程序补齐 |
 
-低于 build 17763 的系统**直接不支持**。安装器会停在欢迎页给出明确提示，不做兜底尝试——这是 Windows App Runtime 1.8 的最低版本要求决定的。
+> 当前源码版本为 **1.5.2**，实际下载版本以 Releases 为准。安装器仍为框架依赖的 WinUI 3 应用，不是自包含离线包。
 
-Anything below build 17763 is **not supported at all**. The installer stops on the welcome page with a clear message rather than attempting a fallback, because Windows App Runtime 1.8 sets that floor.
+**便携组件，不等于零系统改动。**
 
-### 必装运行库 / Required runtimes
+- DSH 与启动器部署到所选目录；新下载的 Node / pnpm / Git / Python 使用便携版，不走 Node 系统 MSI 安装。
+- 安装器会按范围写入 PATH、卸载注册表入口与安装记录，并按选项创建快捷方式、自启计划任务。
+- 两个运行库是系统级安装。选择「所有用户」、启用自启、补装运行库或写入受保护目录时，需要管理员权限；启动器自身也可能触发 UAC。**不保证全程只弹一次。**
+- 启动器在线读取发布清单，必要时尝试旧仓库及 GitHub API；加速线路还可从 npm 镜像下载。当前安装流程**没有内置 `payload\launcher.zip` 离线回退**，已有 Node 和运行库也不代表可以离线安装。
 
-- **.NET 8 桌面运行时 / .NET 8 Desktop Runtime**
-- **Windows App Runtime 1.8**
+默认当前用户目录为 `%LOCALAPPDATA%\DeepSeek Harness`；所有用户目录为 `%ProgramFiles%\DeepSeek Harness`。兼容文件名和数据目录沿用旧协议，见 [过渡说明](TRANSITION.md)。
 
-这两个库**不打进安装包**，而是在安装时按需**在线下载并静默安装**。
+## 卸载与排障
 
-Neither runtime is bundled. The installer downloads and silently installs them on demand.
+在 Windows「应用和功能」中卸载，或运行安装目录中的 `DSH-Uninstall.exe`。卸载默认保留设置、技能、插件与会话数据；取消保留前请先备份。外部复用的组件不是本安装器下载的便携组件，两个系统运行库也不会随本体目录一起移除。
 
----
+失败页和完成页可**导出安装日志**。分享前仍应检查是否包含私人路径或其他敏感信息，不要直接上传配置、凭据或完整状态文件。
 
-## 快速开始 / Quick start
-
-1. 从 Releases 下载 `DSH-Installer-Setup.exe`。
-2. 双击运行（首次会看到 SmartScreen 提示，处理办法见下文）。
-3. 选择安装范围：仅当前用户 / 所有用户，以及可选组件、快捷方式、开机自启。
-4. 点「安装」，只在需要时弹一次 UAC。
-5. 安装完成后可直接启动 DSH。
-
-1. Download `DSH-Installer-Setup.exe` from Releases.
-2. Double-click it (the first run triggers a SmartScreen prompt — see below).
-3. Pick the install scope (current user / all users), optional components, shortcuts, autostart.
-4. Hit **Install**; a single UAC prompt appears only if needed.
-5. DSH launches right away.
-
-中间发生的事：
-
-What happens in between:
-
-- 检测 Node、pnpm、Git、Python 和两个运行库是否就位；
-- 补齐缺失项：运行库在线下载并静默安装，可选组件解压到目标目录；
-- 用 npm 安装 DSH 本体：`@deepseek-ai/dsh`，版本范围 `^0.1.5-rc.1`；
-- 从启动器仓库取最新版启动器并铺到目标目录；
-- 按你的勾选建桌面快捷方式、注册开机自启。
-
-- Checks whether Node, pnpm, Git, Python and both runtimes are present.
-- Fills the gaps: runtimes are downloaded and installed silently; optional components are unpacked into the target directory.
-- Installs DSH itself via npm: `@deepseek-ai/dsh`, version range `^0.1.5-rc.1`.
-- Fetches the newest launcher from its repository and deploys it.
-- Creates the desktop shortcut and autostart entry you asked for.
-
-Node 走官方源或国内镜像的 LTS（当前 22 线）。
-
-Node comes from the official or China-mirror LTS line (currently the 22.x series).
-
----
-
-## 安装包为什么这么小 / Why the package is small
-
-安装包大约 **11 MB**。这不是靠砍功能换来的，而是靠「不搬运行时」和「不打包启动器」。
-
-The package is roughly **11 MB**. That is not achieved by cutting features, but by not shipping runtimes and not bundling the launcher.
-
-**运行库按需在线下载。** 如果机器上已经有 .NET 8 桌面运行时和 Windows App Runtime 1.8，就完全跳过；缺哪个补哪个。用户不必为了装一个工具先下载上百 MB 的完整运行时。
-
-**Runtimes are fetched on demand.** If .NET 8 Desktop Runtime and Windows App Runtime 1.8 already exist, that step is skipped entirely; only what is missing gets installed. Nobody is forced to pull a hundred-plus megabytes of runtime just to install a tool.
-
-**启动器走 manifest 现下最新版。** 安装器不内置启动器，而是安装时优先读取 `YunxiRamito/Dafeiyu-Go-DeepSeek-Harness-Click-To-Run` 仓库根目录的 `manifest.json`，拿不到时回退旧仓库 `YunxiRamito/DSH-Launcher`。这样启动器发新版时，安装器不需要重新发布。
-
-**The launcher is resolved from a manifest.** The installer does not embed the launcher. At install time it reads `manifest.json` from `YunxiRamito/Dafeiyu-Go-DeepSeek-Harness-Click-To-Run`, with `YunxiRamito/DSH-Launcher` as a transition fallback.
-
-清单拉不到（断网、仓库不可用）时，回落到安装器自带的 `payload\launcher.zip`。
-
-If the manifest cannot be reached (offline, repository unavailable), it falls back to the bundled `payload\launcher.zip`.
-
-国内网络下清单渠道按可达性排序：
-
-For networks in China, manifest sources are tried in order of reachability:
-
-`ghproxy.net` > `gh-proxy.com` > jsDelivr > `raw.githubusercontent.com` > GitHub API
-
----
-
-## 界面与选项 / Interface and options
-
-界面**中英双语**，默认跟随系统语言，右上角可随时切换。
-
-The UI is **bilingual (Chinese / English)**, follows the system language by default, and can be switched from the top-right corner at any time.
-
-| 选项 / Option | 说明 / Notes |
+| 位置 | 用途 |
 | --- | --- |
-| 安装范围 / Install scope | 仅当前用户 / 所有用户（All users 需要提权）/ Current user or all users (elevation needed for all users) |
-| 可选组件 / Optional components | pnpm / Git / Python，均为解压到自选目录的便携安装 / Portable, unpacked into a directory you choose |
-| 桌面快捷方式 / Desktop shortcut | 可选 / Optional |
-| 开机自启 / Autostart | 可选，需要提权 / Optional, requires elevation |
-| 安装后启动 / Launch after install | 默认勾选 / On by default |
+| `%LOCALAPPDATA%\DeepSeekHarness\installer.log` | 安装日志 |
+| `%LOCALAPPDATA%\DeepSeekHarness\installer-state.json` | 本机安装记录，排查路径或修复时参考 |
+| `%TEMP%\dsh-boot.log` | 引导程序与运行库安装日志 |
 
-### 提权只弹一次 / Exactly one UAC prompt
+下载失败时切换向导中的下载源，或检查代理设置；运行库安装失败时可手动安装后重试。
 
-选「所有用户」或「开机自启」时，点下「安装」的那一刻会用 `runas` 起一个提权实例。向导里填过的所有选项会先落盘，再由提权实例读回来，因此无需重新执行向导，也无需重新填写任何内容。
+**官方构建目前未签名。** SmartScreen 警告不能证明文件安全或有害；先核对下载来源。确认来自本仓库 Releases 后，可选择「更多信息 → 仍要运行」，或在文件属性中「解除锁定」。详见 [签名说明](SIGNING.md)。
 
-When you choose "all users" or autostart, hitting **Install** spawns an elevated instance via `runas`. Everything you entered in the wizard is persisted to disk first and read back by the elevated instance, so you never have to redo the wizard or retype anything.
+<details>
+<summary><strong>命令行与无人值守安装</strong></summary>
 
----
-
-## 卸载 / Uninstall
-
-安装器提供一个**独立的卸载程序 `DSH-Uninstall.exe`**，并注册到 Windows「应用和功能」，可以直接从系统设置里卸载。
-
-A **standalone uninstaller, `DSH-Uninstall.exe`**, is installed and registered under Windows "Apps & features", so you can uninstall straight from Settings.
-
-卸载时会询问要不要**连 Node 一起卸载**——因为 Node 是唯一写进系统的组件之一，有人只想留着自己用，有人想恢复原状。
-
-Uninstall asks whether to **remove Node as well**, since Node is one of the few things written into the system: some people want to keep it, others want the machine back the way it was.
-
-也支持命令行卸载：
-
-Command-line uninstall is supported too:
-
-```
-DSH-Installer.exe --uninstall
-```
-
----
-
-## 命令行与无人值守安装 / Command line and unattended install
-
-所有开关都可用于脚本部署：
-
-Every switch is scriptable:
-
-| 开关 / Switch | 作用 / Effect |
-| --- | --- |
-| `--silent` | 跳过向导直接安装 / Skip the wizard and install |
-| `--uninstall` | 卸载模式 / Uninstall mode |
-| `--scope=machine\|user` | 安装范围 / Install scope |
-| `--source=china\|official` | 下载源 / Download source |
-| `--dsh-root=<路径>` | DSH 本体目录 / DSH root directory |
-| `--launcher-root=<路径>` | 启动器目录 / Launcher root directory |
-| `--components-root=<路径>` | 可选组件目录 / Optional components root |
-| `--git` `--pnpm` `--python` | 勾选对应组件 / Select those components |
-| `--no-shortcut` | 不建桌面快捷方式 / No desktop shortcut |
-| `--no-autostart` | 不注册开机自启 / No autostart |
-| `--no-launch` | 安装完成后不启动 / Do not launch afterwards |
-| `--no-runtime` | 不下载安装两个运行库（机器上已确认装好时用）/ Skip the runtime download-and-install step |
-| `--report=<文件>` | 结果写 JSON / Write a JSON report |
-| `--dry-run` | 演练，不落盘 / Dry run, nothing is written |
-| `--page=N` | 跳页预览，强制演练模式 / Jump to page N for preview, forces dry-run |
-
-示例 / Example:
+发布安装包接受参数并转交主程序。`--silent` 跳过向导，但不会绕过 UAC；批量部署时应预先准备相应权限。
 
 ```powershell
-# 静默全用户安装，走国内源，装 pnpm 和 Git，结果写 JSON
-.\DSH-Installer-Setup.exe --silent --scope=machine --source=china --pnpm --git --report=install.json
+# 当前用户安装，不注册自启，安装后不启动
+.\DSH-Installer-Setup.exe --silent --scope=user --source=china --pnpm --git --no-autostart --no-launch --report=install.json
 
-# 只预览第 4 页长什么样，不写任何文件
+# 按已有安装记录进入修复流程；无记录时退回普通安装
+.\DSH-Installer-Setup.exe --repair
+
+# 预览页面（0 起编号）；仍可能写入日志、缓存与配置
 .\DSH-Installer-Setup.exe --page=4
 ```
 
----
-
-## 未签名与 SmartScreen / Unsigned build and SmartScreen
-
-**当前发布版本未做数字签名。** 所以首次运行时 Windows SmartScreen 会弹出「Windows 已保护你的电脑」。
-
-**Current releases are not code-signed.** Windows SmartScreen will therefore show "Windows protected your PC" on first run.
-
-这是未签名开源软件的**预期行为**，并不代表文件有害。两种办法过掉：
-
-This is the **expected behaviour** for unsigned open-source software and does not indicate a harmful file. Two ways past it:
-
-- 在「Windows 已保护你的电脑」对话框点「更多信息」→「仍要运行」；
-- 或右键 exe →「属性」→ 在「常规」页勾选「解除锁定」→「确定」。
-
-- In the "Windows protected your PC" dialog, click **More info** → **Run anyway**.
-- Or right-click the exe → **Properties** → tick **Unblock** on the General tab → **OK**.
-
-如果你更放心从源码来，可以自己按下面的步骤构建，产出的是同一个程序。
-
-If you would rather build it yourself, follow the instructions below — you get the same program.
-
----
-
-## 日志与排障 / Logs and troubleshooting
-
-| 文件 / File | 内容 / Contents |
+| 参数 | 用途 |
 | --- | --- |
-| `%LOCALAPPDATA%\DeepSeekHarness\installer.log` | 安装日志 / Installer log |
-| `%LOCALAPPDATA%\DeepSeekHarness\installer-state.json` | 安装状态记录 / Installer state |
-| `%TEMP%\dsh-boot.log` | 引导阶段日志 / Bootstrapper log |
+| `--silent` / `--uninstall` / `--repair` | 无向导安装 / 卸载 / 修复 |
+| `--scope=user\|machine` | 当前用户 / 所有用户 |
+| `--source=china\|official` | 加速线路 / 官方线路 |
+| `--dsh-root=<路径>` | DSH 目录 |
+| `--launcher-root=<路径>` | 启动器目录 |
+| `--components-root=<路径>` | 便携组件目录 |
+| `--pnpm` / `--git` / `--python` | 选择可选组件 |
+| `--force-reinstall` | 对所选组件禁用复用，重新下载便携版 |
+| `--no-shortcut` / `--no-autostart` / `--no-launch` | 不建桌面快捷方式 / 不注册自启 / 不在完成后启动 |
+| `--no-runtime` | 跳过主安装流程的运行库步骤；**不禁用外层引导程序的运行库补装** |
+| `--report=<文件>` | 写入 JSON 结果 |
+| `--dry-run` | 演练主要安装步骤；**不是零写盘或隔离沙箱** |
+| `--page=N` / `--lang=zh\|en` | 跳页预览 / 界面语言 |
 
-出现问题时，提供上述几个文件即可定位大多数情况。
+`--page=N` 默认启用演练；同时传 `--install` 或 `--silent` 则允许真实安装。外层引导程序仍会解压安装器、记录日志并按需补装运行库；不要在未准备好的机器上把预览当作无副作用测试。
 
-When something goes wrong, sending those files along usually identifies the cause.
+</details>
 
-快速自查 / Quick self-check:
+<details>
+<summary><strong>从源码构建</strong></summary>
 
-- 卡在欢迎页 → 系统版本低于 build 17763 / Stuck on the welcome page → OS older than build 17763.
-- 运行库下载失败 → 试试 `--source=china`，或自行手动装好两个运行库再重跑 / Runtime download failed → try `--source=china`, or install both runtimes manually and rerun.
-- 想先看看会发生什么 → `--dry-run` 或 `--page=N`，都不落盘 / Want a preview → `--dry-run` or `--page=N`; neither writes anything.
-
----
-
-## 从源码构建 / Building from source
-
-需要 / Requires:
-
-- .NET 8 SDK
-- Windows App SDK 1.8
+使用 Windows x64、.NET 8 SDK 与可用的 Windows SDK 构建环境。Windows App SDK `1.8.260804001` 由 NuGet 恢复；打包脚本还调用系统 .NET Framework 的 `csc.exe`。
 
 ```powershell
-# 只编译共享库 / Build the shared library only
-dotnet build src\DshInstaller.Shared\DshInstaller.Shared.csproj -c Release
+# 共享库
+ dotnet build src\DshInstaller.Shared\DshInstaller.Shared.csproj -c Release
 
-# 开发用发布：输出到 dist\preview 并打 zip
-# Dev publish: output to dist\preview and zip it
+# WinUI 主程序
+ dotnet build src\DshInstaller\DshInstaller.csproj -c Release
+
+# 开发预览包
 .\pack-preview.ps1
 
-# 正式打包：产出单个 dist\DSH-Installer-Setup.exe，并拷到桌面
-# Release packaging: produce a single dist\DSH-Installer-Setup.exe and copy it to the desktop
-.\pack-release.ps1
+# 正式安装包：dist\DSH-Installer-Setup.exe，不复制到桌面
+.\pack-release.ps1 -NoDesktop
 ```
 
----
+打包脚本会清理输出并停止匹配的安装器进程，请先结束本机测试。DSH 安装范围为 `@deepseek-ai/dsh@^0.1.5-rc.1`，不是锁定的精确版本；版本与系统门槛参考 [构建配置](Directory.Build.props)。
 
-## 目录结构 / Repository layout
+维护入口：[交接说明](HANDOVER.md) · [1.5.0 功能交接](HANDOVER-1.5.0-installer.md) · [项目状态](STATUS.md) · [发布流程](RELEASE.md)。历史文档与实现不一致时，以当前源码和发布产物为准。
 
-根目录为 `DSH Installer\` / The project root is `DSH Installer\`:
-
-| 路径 / Path | 内容 / Contents |
-| --- | --- |
-| `src\DshInstaller\` | WinUI 3 主程序；向导页面在 `Pages\`，自绘控件在 `Controls\`，文案在 `Localization.cs` / WinUI 3 app; wizard pages in `Pages\`, custom controls in `Controls\`, strings in `Localization.cs` |
-| `src\DshInstaller.Shared\` | 共享库：检测（`Detection\`）、下载 / 解包 / 安装编排 / 卸载（`Install\`）/ Shared library: detection (`Detection\`), download / unpack / install orchestration / uninstall (`Install\`) |
-| `boot\Boot.cs` | 引导程序源码，编译成 `Setup.exe` 外层引导 / Bootstrapper source, compiled into the outer `Setup.exe` |
-| `boot\Uninstall.cs` | 独立卸载程序源码 / Standalone uninstaller source |
-| `assets\DSHInstaller.ico` | 图标 / Icon |
-| `docs\` | `ARCHITECTURE.md` / `SETUP.md` / `CHANGELOG.md` |
-| `STATUS.md` | 开发交接文档 / Development handover notes |
-| `pack-preview.ps1` `pack-release.ps1` `build.ps1` | 构建脚本 / Build scripts |
-
-启动器是**另一个独立仓库**（`YunxiRamito/Dafeiyu-Go-DeepSeek-Harness-Click-To-Run`）。本安装器只负责把它正确地铺到目标目录。
-
-The launcher lives in a **separate repository** (`YunxiRamito/Dafeiyu-Go-DeepSeek-Harness-Click-To-Run`). This installer is only responsible for deploying it correctly.
-
----
-
-## 常见问题 / FAQ
-
-**安装完成后启动器位于何处？**
-在安装时选择的目标目录中，安装器会将启动器部署到该处。如需单独指定，使用 `--launcher-root=`。安装完成后从托盘图标或快捷方式启动即可。
-
-**Where does the launcher end up?**
-In the target directory you chose during install — the installer deploys it there. Use `--launcher-root=` to point it somewhere specific. Afterwards, start it from the tray icon or the shortcut.
-
-**能不能离线安装？**
-不能完全保证。两个运行库是安装时在线下载的，DSH 本体也走 npm。如果机器上已经装好这两个运行库、并且有一个可用的 Node，安装器就不需要联网；启动器也有自带的 `payload\launcher.zip` 作回落。
-
-**Can I install offline?**
-Not with any guarantee. Both runtimes are downloaded at install time and DSH itself comes from npm. If the two runtimes and a working Node are already present, no network is needed, and the launcher falls back to the bundled `payload\launcher.zip`.
-
-**如何安装到其他位置？**
-可通过 `--dsh-root=` / `--launcher-root=` / `--components-root=` 分别指定，也可在向导中直接修改目标路径。
-
-**How do I change the install location?**
-Use `--dsh-root=` / `--launcher-root=` / `--components-root=`, or just edit the target paths in the wizard.
-
-**为什么需要管理员权限？**
-只有在选「所有用户」或「开机自启」时才需要——前者要往系统范围写，后者要注册开机启动。选当前用户、不勾自启的话，全程不需要提权，只弹一次 UAC 也仅限于这两种情况。
-
-**Why does it need administrator rights?**
-Only for "all users" (system-wide writes) or autostart (registering a startup entry). With the current-user scope and autostart off, no elevation is needed at all; the single UAC prompt only appears for those two choices.
-
-**Node 会不会污染系统？**
-Node 是唯一写进系统的组件之一（另一个是两个运行库）。它按标准方式安装、不修改你的项目环境；如果不想留着，卸载时选择连 Node 一起卸载即可。
-
-**Does Node pollute my system?**
-Node is one of the few components written into the system (the other being the two runtimes). It installs the standard way and does not touch your project environments; if you do not want to keep it, choose to remove Node during uninstall.
-
-**怎么彻底删干净？**
-先跑卸载程序（或 `DSH-Installer.exe --uninstall`），卸载里选择一并移除 Node；然后删掉你选择的安装目录（可选组件是便携解压的，删目录即可）。最后如果想清日志，可以手动删除 `%LOCALAPPDATA%\DeepSeekHarness\`。
-
-**How do I remove everything cleanly?**
-Run the uninstaller (or `DSH-Installer.exe --uninstall`) and opt to remove Node as well; then delete the install directory you chose (portable components go away with the directory). To clear logs too, delete `%LOCALAPPDATA%\DeepSeekHarness\` by hand.
-
----
-
-## 许可 / License
-
-MIT License. 详见仓库中的 `LICENSE`。 / MIT License — see `LICENSE` in the repository.
-
-## 相关仓库 / Related repositories
-
-- 启动器 / Launcher: [`YunxiRamito/Dafeiyu-Go-DeepSeek-Harness-Click-To-Run`](https://github.com/YunxiRamito/Dafeiyu-Go-DeepSeek-Harness-Click-To-Run) — 托盘程序，本安装器负责铺装 / the tray app this installer deploys
-- DSH 本体 / DSH itself: npm 包 `@deepseek-ai/dsh` / the npm package `@deepseek-ai/dsh`
-
-感谢 DeepSeek Harness 与 Windows App SDK 社区的工作。
-
-Thanks to the DeepSeek Harness and Windows App SDK communities.
-
----
-
-## Code signing policy
-
-**代码签名政策**
-
-**本项目目前不做代码签名。** SignPath Foundation 的免费签名申请未通过，官方构建不带数字签名；SmartScreen 的提示请按上一节的办法过掉。详见 [SIGNING.md](SIGNING.md)。
-
-This project currently ships **unsigned** builds. The free signing application to SignPath Foundation was declined, so official builds carry no digital signature; see the SmartScreen section above and [SIGNING.md](SIGNING.md).
-
-- Committers and reviewers / 提交与审查: [YunxiRamito](https://github.com/YunxiRamito)
-- Approvers / 批准人: [YunxiRamito](https://github.com/YunxiRamito)
-
-**Privacy policy / 隐私政策**: 本安装程序不收集、不上传用户数据;它只在你确认之后从官方来源下载运行库与 DSH 本体。
-
-This program will not transfer any information to other networked systems unless specifically requested by the user or the person installing or operating it.
+</details>

@@ -192,6 +192,11 @@ namespace DshInstaller.Shared.Install
                 problems.Add("组件目录为空");
             }
 
+            if (problems.Count == 0)
+            {
+                string layout = InstallPaths.ValidateLayout(DshRoot, LauncherRoot, ComponentsRoot);
+                if (layout != null) problems.Add(layout);
+            }
             return problems.Count == 0 ? null : string.Join("; ", problems.ToArray());
         }
     }

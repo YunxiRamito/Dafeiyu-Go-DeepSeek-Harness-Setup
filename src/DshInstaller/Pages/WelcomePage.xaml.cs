@@ -102,7 +102,7 @@ namespace DshInstaller.Pages
                 return;
             }
 
-            window.Navigate(WizardPage.Progress, null);
+            window.Navigate(WizardPage.Confirm, null);
         }
 
         private void BuildBrand()

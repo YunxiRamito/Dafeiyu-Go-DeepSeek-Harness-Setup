@@ -46,7 +46,7 @@ namespace DshInstaller
             {
                 if (InstallSession.Current.SetupRepair())
                 {
-                    DevOptions.ForceStartPage((int)WizardPage.Progress);
+                    DevOptions.ForceStartPage((int)WizardPage.Confirm);
                 }
                 else
                 {
@@ -60,8 +60,10 @@ namespace DshInstaller
                 // 静默模式同样要提权 —— 无人值守时没有"确认页"给用户点,
                 // 不提权的话装到 Program Files 会直接失败(而且失败得莫名其妙)。
                 // 判断依据和界面路径一致:装给所有用户、要注册开机自启、或者缺运行库。
-                bool needAdmin = DevOptions.AllUsers || !DevOptions.NoAutostart
-                    || (!DevOptions.NoRuntime && Shared.Detection.RuntimeProbe.AnyMissing);
+                InstallOptions effectivePlan = DevOptions.Uninstall ? null : InstallerPlan.FromCommandLine();
+                bool needAdmin = effectivePlan != null
+                    ? InstallerPlan.ElevationReasons(effectivePlan).Count > 0
+                    : DevOptions.AllUsers || !DevOptions.NoAutostart;
 
                 if (needAdmin && !Shared.ElevationHelper.IsElevated())
                 {
@@ -74,6 +76,8 @@ namespace DshInstaller
                     }
 
                     Shared.InstallLogger.Write("静默模式提权失败: " + error);
+                    Environment.ExitCode = 1;
+                    return;
                 }
 
                 DevOptions.ForceStartPage((int)WizardPage.Progress);
@@ -82,7 +86,7 @@ namespace DshInstaller
                 // 卸载选项由进度页从安装状态文件里读(装到哪儿只有那份文件知道)。
                 if (!DevOptions.Uninstall)
                 {
-                    PendingPlan = InstallerPlan.FromCommandLine();
+                    PendingPlan = effectivePlan;
                 }
             }
 

@@ -59,6 +59,7 @@ namespace DshInstaller
         public static string LauncherRoot { get; private set; }
         public static string ComponentsRoot { get; private set; }
         public static bool AllUsers { get; private set; }
+        public static bool ScopeSpecified { get; private set; }
         public static string Source { get; private set; } = "china";
         public static string PreviewStyle { get; private set; } = "auto";
         public static bool WantGit { get; private set; }
@@ -218,6 +219,7 @@ namespace DshInstaller
                         break;
 
                     case "scope":
+                        ScopeSpecified = true;
                         AllUsers = value.StartsWith("machine", StringComparison.OrdinalIgnoreCase)
                             || value.StartsWith("all", StringComparison.OrdinalIgnoreCase);
                         break;

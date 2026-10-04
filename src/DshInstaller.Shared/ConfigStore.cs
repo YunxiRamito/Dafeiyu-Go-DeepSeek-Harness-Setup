@@ -16,6 +16,7 @@ namespace DshInstaller.Shared
         public string Scope { get; set; }
         public bool Autostart { get; set; }
         public bool DesktopShortcut { get; set; }
+        public bool? StartMenuShortcut { get; set; }
         public bool InstallGit { get; set; }
         public bool InstallPnpm { get; set; }
         public bool InstallPython { get; set; }

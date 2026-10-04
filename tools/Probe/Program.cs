@@ -17,6 +17,8 @@ namespace DshInstaller.Probe
     {
         private static int Main(string[] arguments)
         {
+            if (arguments.Length == 1 && arguments[0] == "--test-plan-safety")
+                return PlanSafetyTests.Run();
             Console.OutputEncoding = Encoding.UTF8;
             string hint = arguments.Length > 0 ? arguments[0] : null;
 

@@ -33,12 +33,14 @@ namespace DshInstaller.Pages
         {
             InstallSession session = InstallSession.Current;
 
-            if (!session.NeedsElevation || Shared.ElevationHelper.IsElevated())
+            InstallOptions options = InstallerPlan.Build();
+            string validation = options.Validate();
+            if (validation != null) { ShowElevationFailure(validation); return false; }
+            if (InstallerPlan.ElevationReasons(options).Count == 0 || Shared.ElevationHelper.IsElevated())
             {
                 return true;
             }
 
-            InstallOptions options = InstallerPlan.Build();
             string planPath;
             try
             {
@@ -107,7 +109,11 @@ namespace DshInstaller.Pages
         {
             InstallSession session = InstallSession.Current;
 
+            InstallOptions options = InstallerPlan.Build();
             RowsHost.Children.Clear();
+            Add(Localization.T("confirm.title"), Localization.T("preview.notice"));
+            string validation = options.Validate();
+            if (validation != null) Add(Localization.T("failed.title"), validation);
 
             Add(Localization.IsChinese ? "安装范围" : "Scope",
                 session.Scope == InstallScope.AllUsers
@@ -117,14 +123,29 @@ namespace DshInstaller.Pages
             // 把"为什么还要提权"明说。只选了"仅当前用户"却照样弹 UAC,用户会一头雾水 ——
             // 原因只有两个(装给所有用户、要注册开机自启、要装系统运行库),直接摆出来
             // (实测反馈:"为自己安装还是弹 UAC,为什么")。
-            Add(Localization.IsChinese ? "权限" : "Permissions", DescribeElevation(session));
+            Add(Localization.IsChinese ? "权限" : "Permissions", DescribeElevation(options));
 
-            Add(Localization.IsChinese ? "组件目录" : "Component directory", session.ComponentsRoot);
+            Add(Localization.IsChinese ? "组件目录" : "Component directory", options.ComponentsRoot);
             Add(Localization.IsChinese ? "下载源" : "Download source",
                 session.SourcePreference == MirrorSource.China
                     ? (Localization.IsChinese ? "国内镜像" : "China mirror")
                     : (Localization.IsChinese ? "官方源" : "Official source"));
 
+            Add(Localization.T("preview.system"), Localization.T("preview.changes"));
+            Add(Localization.T("preview.data"), Localization.T("preview.keep"));
+            Add(Localization.T("preview.network"), Localization.T("preview.online"));
+            var actions = new List<string>();
+            foreach (string id in new[] { "node", "git", "pnpm", "python" })
+            {
+                bool selected = id == "node" || (id == "git" && options.InstallGit)
+                    || (id == "pnpm" && (options.InstallPnpm || options.RecommendedPluginSpecs.Count > 0))
+                    || (id == "python" && options.InstallPython);
+                if (!selected) continue;
+                actions.Add(id + ": " + (options.CanReuse(id)
+                    ? Localization.T("preview.reuse") + " " + options.ReusePath(id)
+                    : Localization.T("preview.install")));
+            }
+            Add(Localization.T("preview.components"), string.Join("\n", actions));
             List<string> extras = new List<string>();
             bool recommendedPlugins =
                 session.RecommendedPluginSpecs.Count > 0;
@@ -155,8 +176,8 @@ namespace DshInstaller.Pages
                         + session.RecommendedPluginSpecs.Count
                         + (Localization.IsChinese ? " 个" : " item(s)"));
 
-            Add(Localization.IsChinese ? "DSH 本体" : "DSH core", session.DshRoot);
-            Add(Localization.IsChinese ? "启动器" : "Launcher", session.LauncherRoot);
+            Add(Localization.IsChinese ? "DSH 本体" : "DSH core", options.DshRoot);
+            Add(Localization.IsChinese ? "启动器" : "Launcher", options.LauncherRoot);
 
             Add(Localization.IsChinese ? "桌面快捷方式" : "Desktop shortcut",
                 YesNo(session.CreateDesktopShortcut));
@@ -175,38 +196,15 @@ namespace DshInstaller.Pages
         /// 或者系统缺运行库(装运行库是机器级操作),照样得弹一次 UAC。
         /// 不写明白的话,用户会觉得安装程序在乱要权限。
         /// </summary>
-        private static string DescribeElevation(InstallSession session)
+        private static string DescribeElevation(InstallOptions options)
         {
-            bool chinese = Localization.IsChinese;
-
-            if (session.Scope == InstallScope.AllUsers)
-            {
-                return chinese
-                    ? "需要管理员权限（安装给所有用户）"
-                    : "Administrator rights required (installing for all users)";
-            }
-
-            List<string> reasons = new List<string>();
-            if (session.EnableAutostart)
-            {
-                reasons.Add(chinese ? "注册开机自启" : "registering autostart");
-            }
-
-            if (Shared.Detection.RuntimeProbe.AnyMissing)
-            {
-                reasons.Add(chinese ? "安装系统运行库" : "installing the required runtimes");
-            }
-
-            if (reasons.Count == 0)
-            {
-                return chinese ? "无需管理员权限" : "No administrator rights required";
-            }
-
-            return chinese
-                ? "需要管理员权限（" + string.Join("、", reasons.ToArray()) + "）"
-                : "Administrator rights required (" + string.Join(", ", reasons.ToArray()) + ")";
+            var reasons = InstallerPlan.ElevationReasons(options);
+            var labels = reasons.ConvertAll(reason => Localization.T("preview.reason." + reason));
+            return (labels.Count == 0
+                ? (Localization.IsChinese ? "无需管理员权限" : "No administrator rights required")
+                : (Localization.IsChinese ? "需要管理员权限: " : "Administrator rights required: ") + string.Join(", ", labels))
+                + "\n" + Localization.T("preview.permissions");
         }
-
         private static string YesNo(bool value)
         {
             if (Localization.IsChinese)
