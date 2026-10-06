@@ -8,6 +8,8 @@
 
 *实机截图排版，截图版本未标注（历史局部截图）；截图文件日期 2026-09-23，不代表当前版本界面。界面支持中文与英文，可在右上角切换。*
 
+**1.5.4 已发布**：配套启动器的余额 / Token 图表、下载中心与独立代理范围更新；安装器同步版本，本轮未新增安装 / 卸载流程功能。官方包未签名，两仓 CI、镜像及清单已核验，验证边界见 [交接](HANDOVER.md)。
+
 ## 快速开始
 
 1. 在 [Releases](https://github.com/YunxiRamito/Dafeiyu-Go-DeepSeek-Harness-Setup/releases/latest) 下载 `DSH-Installer-Setup.exe` 并运行。

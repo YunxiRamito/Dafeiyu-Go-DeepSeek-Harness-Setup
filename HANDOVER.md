@@ -1,18 +1,22 @@
 # 交接:大肥鱼Go / Dafeiyu-Go
 
-> 给下一个接手的人(或下一个 AI)。当前源码版本为 `1.5.4`（验收准备中，未发布；公开版本以 Releases 为准），启动器与安装器同版本同步发布。
+> 给下一个接手的人(或下一个 AI)。当前源码版本为 `1.5.4`（已发布；公开版本以 Releases 为准），启动器与安装器同版本同步发布。
 > 第一入口请先读父级 `G:\DeepSeek DSH\DSH Works\Project\Dafeiyu-Go\HANDOVER.md`，再读本文件、
 > `STATUS.md`、`HANDOVER-1.5.0-installer.md`、`RELEASE.md` 和 `TRANSITION.md`。
 
-最后更新:2026-10-06（1.5.4 验收准备中，未发布）
+最后更新:2026-10-06（1.5.4 已发布）
 
-## 1.5.4 验收与发布准备
+## 1.5.4 已发布交接（2026-10-06）
 
 - 本轮同步余额 / Token 图表、下载中心与代理生效范围设置的产品更新说明；安装器仅配套同步版本，未新增安装 / 卸载流程功能。
 - 最终本地验证：安装器 30 项离线计划回归通过，Release 探针构建 0 警告/0 错误，pack-release.ps1 -NoDesktop 完成约 10.9 MB 配套安装包。启动器 BalanceUsage 32、ProxyScope 32、DownloadTasks 34、LauncherSafety 61、UpdateIntegrity 11 全通过，真实 DSH 代理层 3 个本地请求通过，Release/x64 构建通过。
-- 已独立修复余额账户/币种/日期隔离、DSH 不支持代理的显式拒绝、更新任务目录互删与分片线程初始化竞态。隔离启动器预览点击范围开关保存及重载通过，下载空页面入口可见；图表视觉/DPI、完整下载 GUI 点击、UAC、完整安装卸载 e2e 未测，符号链接权限用例跳过。正式资产及镜像尚待 CI 核验，不使用本地包哈希更新公开清单。
+- 已独立修复余额账户/币种/日期隔离、DSH 不支持代理的显式拒绝、更新任务目录互删与分片线程初始化竞态。隔离启动器预览点击范围开关保存及重载通过，下载空页面入口可见；图表视觉/DPI、完整下载 GUI 点击、UAC、完整安装卸载 e2e 未测，符号链接权限用例跳过。正式资产及镜像已核验，清单使用 CI 正式资产哈希。
 - 发布按 `RELEASE.md` 走新 tag CI，先安装器后启动器；正式哈希只采用实际 CI Release 资产。两仓资产及 npm / npmmirror 包核验完成后才更新启动器 manifest，两个 Release 正文均须补产品日志并读回核验。
-- 以下章节为历史记录；公开 manifest 目前仍为 1.5.3。
+- 以下章节为历史记录；公开清单已核验为 1.5.4。
+
+- 正式发布：安装器 CI `37423542360`（commit `88c7e8f`）成功，SHA-256 `f5baaca934311a13056ff62dd3c7356ff686687b5eb18654ed7e1adefac7625f`；启动器 CI `37423773769`（commit `dd5c448`）成功，SHA-256 `2a0e93e8c078c6f648582b29048e2a07745a4a8038cbe825b39f9c8d68843fb8`。两包未签名，正式 ZIP 中引导与 Core 的 FileVersion 均为 1.5.4.0，签名状态 NotSigned。
+- npm 与 npmmirror 实际 tgz 完全一致，SHA-256 `5b9fc39432d9efd3bd662da2b91350a71ee22968666aa75d76b8ec232913aa92`；包内 ZIP 与正式启动器资产一致。两个 GitHub Release 标题与产品更新正文已 PATCH 并 GET 读回核验。
+- 清单已提交 `d8b6bd6` 并推送 main；官方 raw main、jsDelivr main（purge 后）与固定 d8b6bd6 清单均读回 1.5.4，SHA-256 与正式启动器 ZIP 一致。
 
 ## v1.5.3 发布交接（2026-10-04）
 
