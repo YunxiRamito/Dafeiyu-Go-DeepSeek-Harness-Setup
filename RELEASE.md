@@ -1,6 +1,8 @@
 # 大肥鱼Go安装器发布指南
 
-## 当前发布规则与必做清单（2026-10-04）
+## 当前发布规则与必做清单（2026-10-06）
+
+当前源码 1.5.4 正在验收准备，尚未发布；以下流程是发布要求，不是已完成记录。
 
 本节优先于下方历史命令示例。安装器与启动器同版本同步，正式发布走 tag CI；本地 `pack-release.ps1 -NoDesktop` 只构建，不表示已发布。先确认安装器 CI 成功，再发布启动器同版本 tag，随后验证 npm / npmmirror 和公开清单。签名以当前 `SIGNING.md` 和工作流配置为准，不绕过已配置策略。
 
@@ -55,18 +57,17 @@ cd 'G:\DeepSeek DSH\DSH Works\Project\Dafeiyu-Go\Dafeiyu-Go-DeepSeek-Harness-Set
 
 ---
 
-## 二、CI 版:打 tag 自动出包
+## 二、正式发布:新 tag CI
 
 ```powershell
-# 先把版本号改好并提交
-#   Directory.Build.props 里的 <InstallerVersion>
-git add -A
-git commit -m "release: v1.4.9"
-git push
-
-git tag v1.4.9
-git push origin v1.4.9
+# 父级 set-version.ps1 已同步两仓版本
+# 先审查、提交并推送本轮版本 / CHANGELOG / README / 交接
+# 在安装器仓库创建并仅推送本次新 tag
+git tag v1.5.4
+git push origin v1.5.4
 ```
+
+不要强推历史 tag。确认本仓库 CI 成功后，再推启动器同版本新 tag。正式产物及哈希均使用实际 CI Release 资产；本地验证包不能替代。
 
 `v*` 的 tag 一推,`.github/workflows/release.yml` 就会:
 
@@ -79,7 +80,9 @@ git push origin v1.4.9
 
 ---
 
-## 三、手动版:一步步来
+## 三、历史手动打包示例（不用于当前正式发布）
+
+以下 1.4.9 命令仅是历史构建说明；当前本地打包只用于验收，正式发布遵守顶部 tag CI 流程。
 
 ```powershell
 # 1. 改版本号
@@ -121,9 +124,8 @@ git push origin v1.4.9
 
 所以:
 
-- **启动器发新版** → 只推启动器仓库,安装器不用动;
-- **清单拉不到**(断网之类)→ 回落到安装器自带的 `payload\launcher.zip`
-  —— 注意那份**目前没打进正式包**(见 STATUS 的"收尾欠账"),断网时启动器是装不上的。
+- **启动器发新版** → 当前更新协议要求两仓同版本同步发布，安装器即使无功能改动也需同步版本与新 tag CI。
+- **清单 / API 和下载源均不可用** → 当前实现没有 `payload\launcher.zip` 离线回退，安装停止并提示错误，不保证断网安装。
 
 ---
 
