@@ -1,14 +1,23 @@
 # 交接:大肥鱼Go / Dafeiyu-Go
 
-> 给下一个接手的人(或下一个 AI)。当前源码版本为 `1.6.0`（本地实现与验证完成，**未发布 / 未推包**；公开版本以 Releases 为准），启动器与安装器**已解耦**，不再要求两边版本号相同。
+> 给下一个接手的人(或下一个 AI)。当前源码版本为 `1.6.0`（**已于 2026-10-07 发布**：标签 `v1.6.0` 已推、Release 与资产已上传；公开版本以 Releases 为准），启动器与安装器**已解耦**，不再要求两边版本号相同。
 > 第一入口请先读父级 `G:\DeepSeek DSH\DSH Works\Project\Dafeiyu-Go\HANDOVER.md`，再读本文件、
 > `STATUS.md`、`HANDOVER-1.5.0-installer.md`、`RELEASE.md` 和 `TRANSITION.md`。
 
-最后更新:2026-10-06（1.6.0 本地实现完成，未推包）
+最后更新:2026-10-07（1.6.0 安装器已发布）
 
-## 1.6.0 本轮交接（2026-10-06，未推包）
+## 1.6.0 本轮交接（2026-10-07 已发布）
 
-按父级 `DS41-实施任务.md` 执行。**未提交、未推送、未打标签。**
+**发布记录**：`main` 已推送（`863833d`）、标签 `v1.6.0` 已推送；
+Release https://github.com/YunxiRamito/Dafeiyu-Go-DeepSeek-Harness-Setup/releases/tag/v1.6.0
+资产 `DSH-Installer-Setup.exe` 11,439,334 字节（文件版本 1.6.0.0），
+线上摘要 `sha256:e0a3b660e4a1ca614a257ea24e8c3a4ca4ef6f9ff729f0a2a7b3da512c9a8b9e` = 本地一致。
+`releases/latest` 现在返回 `v1.6.0`，启动器的安装器检查（`InstallerUpdateService` 读该接口的
+`DSH-Installer-Setup.exe` 与资产 `digest` 校验）能正常比对与更新。
+> 注意：启动器 v1.6.0 发布时安装器这一侧还没发，旧版启动器/安装器「两边同 tag」的老流程会因此报错；
+> 安装器 v1.6.0 发布后该问题消失。
+
+按父级 `DS41-实施任务.md` 执行。
 
 ### 安装器仓库改了什么
 
