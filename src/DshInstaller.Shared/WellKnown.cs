@@ -42,7 +42,10 @@ namespace DshInstaller.Shared
             }
         }
 
-        public const string LauncherVersion = "1.4.9.1";
+        // 这里**故意没有** LauncherVersion 常量。
+        // 启动器和安装器各自从自己的更新源取最新版（启动器读 manifest.json，
+        // 安装器读自己的 Release），两边版本号不要求一致，只推其中一个包也是合法状态。
+        // 以前这里硬编码过一个 1.4.9.1，没人读、还误导人以为两边必须同版本，已删除。
 
         /// <summary>DSH 的 npm 包名。</summary>
         public const string DshPackage = "@deepseek-ai/dsh";

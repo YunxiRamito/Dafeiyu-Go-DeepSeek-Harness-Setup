@@ -1,10 +1,41 @@
 # 交接:大肥鱼Go / Dafeiyu-Go
 
-> 给下一个接手的人(或下一个 AI)。当前源码版本为 `1.5.4`（已发布；公开版本以 Releases 为准），启动器与安装器同版本同步发布。
+> 给下一个接手的人(或下一个 AI)。当前源码版本为 `1.6.0`（本地实现与验证完成，**未发布 / 未推包**；公开版本以 Releases 为准），启动器与安装器**已解耦**，不再要求两边版本号相同。
 > 第一入口请先读父级 `G:\DeepSeek DSH\DSH Works\Project\Dafeiyu-Go\HANDOVER.md`，再读本文件、
 > `STATUS.md`、`HANDOVER-1.5.0-installer.md`、`RELEASE.md` 和 `TRANSITION.md`。
 
-最后更新:2026-10-06（1.5.4 已发布）
+最后更新:2026-10-06（1.6.0 本地实现完成，未推包）
+
+## 1.6.0 本轮交接（2026-10-06，未推包）
+
+按父级 `DS41-实施任务.md` 执行。**未提交、未推送、未打标签。**
+
+### 安装器仓库改了什么
+
+- `src/DshInstaller.Shared/WellKnown.cs`：删除 `LauncherVersion = "1.4.9.1"`。
+  它没有任何读取方，却让人以为"安装器版本必须等于启动器版本"，和本轮的解耦方向相反。
+- `Directory.Build.props` / `app.manifest`：`set-version.ps1 -Version 1.6.0` 同步版本。
+- 核对两仓 CI：安装器只校验自家 `Directory.Build.props` 版本 vs 自家 tag；
+  启动器只校验自家 csproj 版本 vs 自家 tag；启动器下载地址来自它自己仓库的
+  `manifest.json` 的 `release.Version`，不拿安装器版本拼。**本来就没有跨仓 tag 耦合**，
+  所以不需要改工作流。
+
+### 与启动器的边界（新）
+
+- 启动器不再在更新自己之前强制把安装器升到同一版本。它读安装器 Release 的最新版，
+  和自己的本地安装器版本比：远端更新才替换，否则跳过。
+- 安装器检查失败 / 替换失败 / Release 没给 SHA-256，启动器只提示并保留当前安装器，
+  **不阻断启动器自身更新**。
+- 本地版本读取顺序：`%LOCALAPPDATA%\DeepSeekHarness\installer-state.json` →
+  `<DSH 根>\dsh\install-manifest.json` 的 `versions.installer` → 卸载注册表
+  `DisplayVersion` → `.installer\DSH-Installer.exe` / `DSH-Uninstall.exe` 文件版本。
+- 读不到版本时不无条件重装；启动器设置页「更新」里有「修复安装器」作为显式修复入口。
+
+### 验证
+
+- 本仓库 `DshInstaller.Shared` 与 `DshInstaller` Release/x64 构建 0 错误。
+- 安装器侧的判定逻辑由启动器仓库的 `tests/UpdateIntegrity.Regression` 覆盖（49 项）。
+- **未测**：完整安装 / 卸载 e2e、UAC 提权、真机覆盖升级。本轮不推包。
 
 ## 1.5.4 已发布交接（2026-10-06）
 
