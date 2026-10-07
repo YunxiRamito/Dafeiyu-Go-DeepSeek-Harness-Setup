@@ -2,7 +2,7 @@
 
 **把 DeepSeek Harness 的环境检测、组件安装和启动器部署交给一个向导。**
 
-[下载安装包](https://github.com/YunxiRamito/Dafeiyu-Go-DeepSeek-Harness-Setup/releases/latest) · [English](docs/README.en.md) · [配套启动器](https://github.com/YunxiRamito/Dafeiyu-Go-DeepSeek-Harness-Click-To-Run) · [MIT](LICENSE)
+[在线交互预览](https://yunxiramito.github.io/Dafeiyu-Go/) · [下载安装包](https://github.com/YunxiRamito/Dafeiyu-Go-DeepSeek-Harness-Setup/releases/latest) · [English](docs/README.en.md) · [配套启动器](https://github.com/YunxiRamito/Dafeiyu-Go-DeepSeek-Harness-Click-To-Run) · [MIT](LICENSE)
 
 ![大肥鱼Go 安装器下载源与推荐插件实机局部截图排版](docs/images/readme-promo.png)
 
