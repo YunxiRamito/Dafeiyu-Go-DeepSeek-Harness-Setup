@@ -111,6 +111,14 @@ namespace DshInstaller
         private TextBlock _footerHint;
         private TextBlock _languageLabel;
         private Button _languageButton;
+        private StackPanel _backendStatus;
+        private Border _backendStatusDot;
+        private TextBlock _backendStatusText;
+        private Microsoft.UI.Dispatching.DispatcherQueueTimer _backendTimer;
+        private System.Threading.CancellationTokenSource _backendCancellation;
+        private bool _backendProbeBusy;
+        internal BackendConnectionState BackendState { get; private set; } = BackendConnectionState.Connecting;
+        internal event Action BackendStateChanged = delegate { };
         private Button _actionButton;
         private IWizardPageFooterAction _footerAction;
 
@@ -729,6 +737,20 @@ namespace DshInstaller
             Grid.SetColumn(_languageButton, 0);
             grid.Children.Add(_languageButton);
 
+            _backendStatusDot = new Border { Width = 7, Height = 7, CornerRadius = new CornerRadius(4),
+                VerticalAlignment = VerticalAlignment.Center };
+            _backendStatusText = new TextBlock { FontSize = 12, VerticalAlignment = VerticalAlignment.Center,
+                Foreground = Theme.Brush("SecondaryTextBrush", Windows.UI.Color.FromArgb(255, 92, 99, 110)) };
+            _backendStatus = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 7,
+                VerticalAlignment = VerticalAlignment.Center, Visibility = Visibility.Collapsed,
+                Margin = new Thickness(0, 0, 12, 0) };
+            _backendStatus.Children.Add(_backendStatusDot);
+            _backendStatus.Children.Add(_backendStatusText);
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(_backendStatusText, "BackendConnectionStatus");
+            Grid.SetColumn(_backendStatus, 0);
+            grid.Children.Add(_backendStatus);
+            RenderBackendStatus();
+
             _footerHint = new TextBlock
             {
                 FontSize = 12,
@@ -952,6 +974,7 @@ namespace DshInstaller
 
         private void OnWindowClosed(object sender, WindowEventArgs args)
         {
+            StopBackendMonitor();
             _backdropClosed = true;
             DisposeBackdropControllers();
         }
@@ -1365,7 +1388,71 @@ namespace DshInstaller
                 bool firstPage = _current == WizardPage.Welcome || _current == WizardPage.Uninstall;
 
                 _languageButton.Visibility = firstPage ? Visibility.Visible : Visibility.Collapsed;
+                _backendStatus.Visibility = firstPage ? Visibility.Collapsed : Visibility.Visible;
+                if (firstPage) StopBackendMonitor();
+                else StartBackendMonitor();
             }
+        }
+
+        private void StartBackendMonitor()
+        {
+            if (_backendCancellation != null) return;
+            _backendCancellation = new System.Threading.CancellationTokenSource();
+            BackendState = BackendConnectionState.Connecting;
+            RenderBackendStatus();
+            BackendStateChanged();
+            _backendTimer ??= DispatcherQueue.CreateTimer();
+            _backendTimer.Interval = TimeSpan.FromSeconds(5);
+            _backendTimer.Tick -= BackendMonitorTick;
+            _backendTimer.Tick += BackendMonitorTick;
+            _backendTimer.Start();
+            _ = RefreshBackendAvailabilityAsync();
+        }
+
+        private void StopBackendMonitor()
+        {
+            _backendTimer?.Stop();
+            var cancellation = _backendCancellation;
+            _backendCancellation = null;
+            cancellation?.Cancel();
+            cancellation?.Dispose();
+        }
+
+        private void BackendMonitorTick(Microsoft.UI.Dispatching.DispatcherQueueTimer sender, object args)
+            => _ = RefreshBackendAvailabilityAsync();
+
+        internal async System.Threading.Tasks.Task RefreshBackendAvailabilityAsync()
+        {
+            var cancellation = _backendCancellation;
+            if (cancellation == null || _backendProbeBusy) return;
+            _backendProbeBusy = true;
+            try
+            {
+                bool online;
+                try { online = await BackendAvailability.ProbeAsync(cancellation.Token); }
+                catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { return; }
+                catch { online = false; }
+                if (!ReferenceEquals(cancellation, _backendCancellation)) return;
+                BackendState = online ? BackendConnectionState.Online : BackendConnectionState.Offline;
+                RenderBackendStatus();
+                BackendStateChanged();
+            }
+            finally { _backendProbeBusy = false; }
+        }
+
+        private void RenderBackendStatus()
+        {
+            if (_backendStatusText == null) return;
+            _backendStatusText.Text = BackendState == BackendConnectionState.Online
+                ? (Localization.IsChinese ? "后端服务器在线" : "Backend server online")
+                : BackendState == BackendConnectionState.Offline
+                    ? (Localization.IsChinese ? "后端服务器离线" : "Backend server offline")
+                    : (Localization.IsChinese ? "后端服务器连接中" : "Connecting to backend server");
+            _backendStatusDot.Background = new SolidColorBrush(BackendState == BackendConnectionState.Online
+                ? Windows.UI.Color.FromArgb(255, 37, 163, 77)
+                : BackendState == BackendConnectionState.Offline
+                    ? Windows.UI.Color.FromArgb(255, 213, 67, 67)
+                    : Windows.UI.Color.FromArgb(255, 202, 149, 25));
         }
 
         /// <summary>按钮文案走一遍本地化(键在里面就翻,不在就原样)。</summary>

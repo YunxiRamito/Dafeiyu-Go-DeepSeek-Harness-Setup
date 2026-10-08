@@ -26,6 +26,13 @@ namespace DshInstaller
     {
         private static readonly InstallSession Instance = new InstallSession();
 
+        private InstallSession()
+        {
+            string saved = ConfigStore.NormalizeSourcePreference(ConfigStore.LoadForUpdate().SourcePreference);
+            if (saved != null) SourcePreference = saved;
+            BackendDownloadSource.SelectedPreference = SourcePreference;
+        }
+
         public static InstallSession Current
         {
             get { return Instance; }
@@ -64,6 +71,8 @@ namespace DshInstaller
             ComponentsRoot = string.IsNullOrWhiteSpace(state.ComponentsRoot)
                 ? System.IO.Path.Combine(state.DshRoot, "components")
                 : state.ComponentsRoot;
+            SourcePreference = restored.SourcePreference;
+            BackendDownloadSource.SelectedPreference = SourcePreference;
 
             DshRootChosen = true;
             LauncherChosen = true;

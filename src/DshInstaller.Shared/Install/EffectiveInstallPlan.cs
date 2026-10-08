@@ -17,6 +17,8 @@ namespace DshInstaller.Shared.Install
                 ? Path.Combine(state.DshRoot, WellKnown.LauncherFolder) : state.LauncherRoot;
             options.ComponentsRoot = string.IsNullOrWhiteSpace(state.ComponentsRoot)
                 ? Path.Combine(state.DshRoot, "components") : state.ComponentsRoot;
+            string source = ConfigStore.NormalizeSourcePreference(state.SourcePreference);
+            if (source != null) options.SourcePreference = source;
             options.InstallGit = state.InstallGit;
             options.InstallPnpm = state.InstallPnpm;
             options.InstallPython = state.InstallPython;

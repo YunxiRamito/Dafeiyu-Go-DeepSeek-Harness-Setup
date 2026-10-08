@@ -169,6 +169,7 @@ namespace DshInstaller.Shared.Install
                     info.EnvironmentVariables[pair.Key] = pair.Value;
                 }
 
+                PackageDownloadEnvironment.Apply(info, environment);
                 StringBuilder stdout = new StringBuilder();
                 StringBuilder stderr = new StringBuilder();
 

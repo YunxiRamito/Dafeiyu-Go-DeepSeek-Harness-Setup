@@ -7,13 +7,12 @@ namespace DshInstaller.Pages
     /// <summary>
     /// 版本页:选 DSH 本体装哪个版本。
     ///
-    /// 为什么要有这一页:以前本体版本**写死在代码里**(WellKnown.DshPackageVersion,
-    /// 形如 ^0.1.5-rc.1),用户想试预览版只能等我们再发一版安装器。
-    /// 现在这条通道交给用户选,和启动器的通道对齐 ——
+    /// 默认跟随官方 latest，用户也可选择 next / alpha 或具体版本。
+    /// 版本标签会在安装步骤解析为实际版本；后端使用完整依赖包。
     /// 启动器那条还没做,所以那一项在界面上是禁用的(写明「暂未开放」)。
     ///
     /// 这里只负责"选",不做任何解析:选出来的值原样交给安装步骤,
-    /// 由它拼进 npm install(并再筛一遍字符)。
+    /// 安装步骤解析后交给完整本地部署或其它来源的 npm 安装。
     /// </summary>
     public sealed partial class VersionsPage : Page, IWizardPage
     {
@@ -63,10 +62,10 @@ namespace DshInstaller.Pages
         private void BuildChoices()
         {
             AddChoice(
-                Localization.IsChinese ? "默认(跟着安装器走)" : "Default (as shipped)",
+                Localization.IsChinese ? "默认（跟随官方 latest）" : "Default (official latest)",
                 SpecDefault);
             AddChoice(
-                Localization.IsChinese ? "最新正式版" : "Latest stable",
+                Localization.IsChinese ? "官方最新版本（latest）" : "Official latest version (latest)",
                 SpecLatest);
             AddChoice(
                 Localization.IsChinese ? "最新预览版" : "Latest preview",
@@ -101,12 +100,12 @@ namespace DshInstaller.Pages
 
             DshTitle.Text = Localization.IsChinese ? "DSH 本体" : "DSH core";
             DshDesc.Text = Localization.IsChinese
-                ? "默认是安装器推荐的那个版本。想尝鲜可以选预览版 / 内测版，或者自己填一个版本号。"
-                : "The default is the version this installer recommends. You can pick preview/alpha or type a version.";
+                ? "默认跟随官方 latest 标签，安装前会解析并显示实际版本。也可选择 next / alpha 或填写版本号。"
+                : "The default follows the official latest tag. The actual version is resolved before installation. You can also choose next / alpha or an exact version.";
 
             DshVersionBox.PlaceholderText = Localization.IsChinese
-                ? "例如 0.2.0-rc.1 或 ^0.1.5"
-                : "e.g. 0.2.0-rc.1 or ^0.1.5";
+                ? "例如 0.2.0-rc.2"
+                : "e.g. 0.2.0-rc.2";
 
             LauncherTitle.Text = Localization.IsChinese
                 ? "Dafeiyu-Go 启动器"
@@ -168,22 +167,22 @@ namespace DshInstaller.Pages
             if (string.Equals(tag, SpecCustom, System.StringComparison.Ordinal))
             {
                 DshHint.Text = Localization.IsChinese
-                    ? "只能填字母、数字和 . - _ ^ ~ > < = * + —— 版本号会被拼进安装命令，所以别的字符一律不收。"
-                    : "Only letters, digits and . - _ ^ ~ > < = * + are allowed, because the value goes into the install command.";
+                    ? "后端完整包请填写具体版本号；其它下载源也支持 ^ / ~ 等版本范围。"
+                    : "For a backend bundle, enter an exact version. Other sources also support ranges such as ^ / ~.";
                 return;
             }
 
             if (string.Equals(tag, SpecDefault, System.StringComparison.Ordinal))
             {
                 DshHint.Text = Localization.IsChinese
-                    ? "用安装器自带的推荐版本，最稳。"
-                    : "Use the version this installer ships with. Safest choice.";
+                    ? "安装官方 latest 标签当前对应的版本；后端源直接下载含依赖的完整本地包。"
+                    : "Install the version currently tagged latest. The backend source downloads a complete dependency bundle.";
                 return;
             }
 
             DshHint.Text = Localization.IsChinese
-                ? "会按这个标签去装最新的一版；装出来可能比安装器自带的更新，出问题可以再用「修复安装」退回推荐版本。"
-                : "Installs the newest release under this tag. It may be newer than what the installer ships with.";
+                ? "安装前解析此标签的实际版本。后端需要该版本的 Windows 完整包；暂未提供时会明确提示。"
+                : "Resolve the actual version before installation. The backend needs a Windows bundle for that version and reports clearly when it is unavailable.";
         }
 
         /// <summary>把界面选的东西变成一个 npm 版本说明(空 = 用默认)。</summary>

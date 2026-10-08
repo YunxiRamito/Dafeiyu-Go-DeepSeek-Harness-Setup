@@ -87,14 +87,14 @@ namespace DshInstaller.Shared.Install
                         return Task.Run(delegate
                         {
                             List<string> protectedPaths = InstallPaths.ProtectedPaths(options);
-                            if (options.RemoveDshCore)
+                            if (options.RemoveDshCore && !string.IsNullOrWhiteSpace(options.DshRoot))
                             {
                                 DeleteDirectory(context, options, options.DshRoot,
                                     SharedText.T("DSH 本体", "DSH core"),
                                     InstallPaths.KeepsForTarget(options.DshRoot, protectedPaths));
                             }
 
-                            if (options.RemoveComponents)
+                            if (options.RemoveComponents && !string.IsNullOrWhiteSpace(options.ComponentsRoot))
                             {
                                 DeleteDirectory(context, options, options.ComponentsRoot,
                                     SharedText.T("便携组件", "portable components"),
@@ -164,7 +164,12 @@ namespace DshInstaller.Shared.Install
                                     Environment.SpecialFolder.LocalApplicationData),
                                 "DeepSeekHarness",
                                 "Boot");
-                            DeleteDirectory(context, options, bootRoot, SharedText.T("引导临时目录", "bootstrap temporary directory"));
+                            // The outer Boot process removes this directory after we exit.
+                            // Deleting our own loaded payload causes repeated access-denied errors.
+                            if (InstallPaths.Contains(bootRoot, typeof(UninstallSteps).Assembly.Location))
+                                context.Log("引导临时目录由引导程序在安装器退出后清理。");
+                            else
+                                DeleteDirectory(context, options, bootRoot, SharedText.T("引导临时目录", "bootstrap temporary directory"));
                         }
                         catch (Exception exception)
                         {

@@ -168,6 +168,7 @@ namespace DshInstaller.Shared.Install
                 {
                     ["schemaVersion"] = SchemaVersion,
                     ["generatedAtUtc"] = DateTime.UtcNow.ToString("o"),
+                    ["sourcePreference"] = ConfigStore.NormalizeSourcePreference(options.SourcePreference),
                     ["versions"] = versions,
                     ["hashLimitBytes"] = HashLimitBytes,
                     ["fileCount"] = files.Count,
@@ -177,7 +178,11 @@ namespace DshInstaller.Shared.Install
 
                 File.WriteAllText(
                     manifestPath,
-                    root.ToJsonString(new JsonSerializerOptions { WriteIndented = false }),
+                    root.ToJsonString(new JsonSerializerOptions
+                    {
+                        TypeInfoResolver = new System.Text.Json.Serialization.Metadata.DefaultJsonTypeInfoResolver(),
+                        WriteIndented = false
+                    }),
                     new UTF8Encoding(false));
 
                 if (log != null)

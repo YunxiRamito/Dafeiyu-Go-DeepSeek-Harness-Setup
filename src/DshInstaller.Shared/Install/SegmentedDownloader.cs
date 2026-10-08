@@ -90,6 +90,7 @@ namespace DshInstaller.Shared.Install
         {
             HttpClientHandler handler = new HttpClientHandler { AllowAutoRedirect = true };
             ProxySupport.Apply(handler);
+            BackendDownloadSource.Apply(handler);
 
             HttpClient client = new HttpClient(handler);
 
@@ -157,6 +158,8 @@ namespace DshInstaller.Shared.Install
                 {
                     segmentCount = 2;
                 }
+                segmentCount = Math.Min(8, segmentCount);
+                BackendDownloadSource.EnsureReady(urls[0], progress, cancellation);
 
                 string chosen = null;
                 long total = 0;
@@ -531,10 +534,15 @@ namespace DshInstaller.Shared.Install
                         .SendAsync(request, HttpCompletionOption.ResponseHeadersRead)
                         .GetAwaiter().GetResult())
                     {
-                        if (response.StatusCode != System.Net.HttpStatusCode.PartialContent
-                            && response.StatusCode != System.Net.HttpStatusCode.OK)
+                        if (response.StatusCode != System.Net.HttpStatusCode.PartialContent)
                         {
                             return false;
+                        }
+                        if (BackendDownloadSource.IsBackendUrl(url))
+                        {
+                            var returnedRange = response.Content.Headers.ContentRange;
+                            if (returnedRange?.From != start || returnedRange.To != end || response.Content.Headers.ContentLength != end - start + 1
+                                || response.Content.Headers.ContentEncoding.Count != 0) return false;
                         }
 
                         using (Stream remote = response.Content.ReadAsStreamAsync().GetAwaiter().GetResult())

@@ -172,6 +172,7 @@ namespace DshInstaller
             if (options.Repair)
             {
                 EffectiveInstallPlan.Restore(options, ConfigStore.Load());
+                if (DevOptions.SourceSpecified) options.SourcePreference = DevOptions.Source;
                 if (DevOptions.ScopeSpecified) options.AllUsers = DevOptions.AllUsers;
                 if (DevOptions.NoShortcut) { options.CreateDesktopShortcut = false; options.CreateStartMenuShortcut = false; }
                 if (DevOptions.NoAutostart) options.EnableAutostart = false;

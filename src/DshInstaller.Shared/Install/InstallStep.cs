@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Threading;
+using System.Collections.Generic;
 
 namespace DshInstaller.Shared.Install
 {
@@ -86,6 +87,14 @@ namespace DshInstaller.Shared.Install
         public InstallOptions Options { get; private set; }
 
         public CancellationToken Token { get; private set; }
+        public List<string> Warnings { get; } = new List<string>();
+
+        public void Warn(string message)
+        {
+            if (String.IsNullOrWhiteSpace(message)) return;
+            Warnings.Add(message);
+            Log(message);
+        }
 
         /// <summary>
         /// 细节上报的落点。由执行器填 —— 它才知道"现在是第几步",
@@ -180,6 +189,7 @@ namespace DshInstaller.Shared.Install
     /// <summary>整条流程的结果。</summary>
     public sealed class InstallReport
     {
+        public List<string> Warnings { get; set; } = new List<string>();
         public bool Succeeded { get; set; }
 
         /// <summary>被取消(不算失败,但也没装完)。</summary>

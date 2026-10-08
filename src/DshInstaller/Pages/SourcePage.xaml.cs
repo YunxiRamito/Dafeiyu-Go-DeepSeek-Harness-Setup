@@ -17,11 +17,13 @@ namespace DshInstaller.Pages
     {
         private SelectableCard _chinaCard;
         private SelectableCard _officialCard;
+        private SelectableCard _backendCard;
 
         /// <summary>控件还没铺好之前,事件里别落盘 —— 初始化本身会触发一轮 SelectionChanged。</summary>
         private bool _proxyReady;
 
         private bool _loadingProxy;
+        private MainWindow _availabilityWindow;
 
         public SourcePage()
         {
@@ -30,6 +32,11 @@ namespace DshInstaller.Pages
             BuildProxy();
             ApplyText();
             Loaded += OnLoaded;
+            Unloaded += delegate
+            {
+                if (_availabilityWindow != null) _availabilityWindow.BackendStateChanged -= UpdateBackendAvailability;
+                _availabilityWindow = null;
+            };
         }
 
         public bool CanGoNext
@@ -40,9 +47,10 @@ namespace DshInstaller.Pages
         public bool OnNext()
         {
             InstallSession.Current.SourcePreference =
-                _officialCard != null && _officialCard.IsSelected
+                _backendCard != null && _backendCard.IsSelected ? MirrorSource.Backend : _officialCard != null && _officialCard.IsSelected
                     ? MirrorSource.Official
                     : MirrorSource.China;
+            BackendDownloadSource.SelectedPreference = InstallSession.Current.SourcePreference;
 
             // 代理已经边改边存了,这里再落一次兜底(用户可能只改了一半就点了下一步)
             SaveProxy();
@@ -52,6 +60,13 @@ namespace DshInstaller.Pages
         private void OnLoaded(object sender, RoutedEventArgs e)
         {
             LoadProxyIntoUi();
+            DispatcherQueue.TryEnqueue(() =>
+            {
+                if (!IsLoaded) return;
+                _availabilityWindow = App.MainWindowInstance;
+                if (_availabilityWindow != null) _availabilityWindow.BackendStateChanged += UpdateBackendAvailability;
+                UpdateBackendAvailability();
+            });
         }
 
         private void BuildCards()
@@ -61,19 +76,28 @@ namespace DshInstaller.Pages
             _officialCard = new SelectableCard();
             _officialCard.Selected += delegate { Select(_officialCard); };
             CardsHost.Children.Add(_chinaCard);
+            _backendCard = new SelectableCard();
+            _backendCard.IsEnabled = false;
+            _backendCard.Opacity = 0.5;
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(_backendCard, "BackendSourceCard");
+            _backendCard.Selected += delegate { Select(_backendCard); };
+            CardsHost.Children.Add(_backendCard);
             CardsHost.Children.Add(_officialCard);
         }
 
         private void Select(SelectableCard card)
         {
+            if (!card.IsEnabled) return;
             _chinaCard.SetSelectedQuietly(
                 ReferenceEquals(card, _chinaCard));
             _officialCard.SetSelectedQuietly(
                 ReferenceEquals(card, _officialCard));
+            _backendCard.SetSelectedQuietly(ReferenceEquals(card, _backendCard));
             InstallSession.Current.SourcePreference =
-                ReferenceEquals(card, _officialCard)
+                ReferenceEquals(card, _backendCard) ? MirrorSource.Backend : ReferenceEquals(card, _officialCard)
                     ? MirrorSource.Official
                     : MirrorSource.China;
+            BackendDownloadSource.SelectedPreference = InstallSession.Current.SourcePreference;
         }
 
         // ---------------------------------------------------------------- 代理
@@ -272,11 +296,11 @@ namespace DshInstaller.Pages
             ProxyLabel.Text = chinese ? "网络代理" : "Network proxy";
 
             _chinaCard.CardTitle = chinese
-                ? "大陆 CDN 下载（推荐）"
+                ? "大陆CDN下载（推荐）"
                 : "Mainland CDN (recommended)";
             _chinaCard.Description = chinese
-                ? "只使用 npmmirror、华为云和国内 GitHub 加速镜像；镜像之间会自动重试。"
-                : "Use only npmmirror, Huawei Cloud and mainland GitHub mirrors; retry between those mirrors.";
+                ? "使用国内CDN镜像加速下载"
+                : "Accelerate downloads with mainland CDN mirrors";
             _chinaCard.CardPath = chinese
                 ? "适合中国大陆网络"
                 : "For networks in mainland China";
@@ -285,11 +309,14 @@ namespace DshInstaller.Pages
                 ? "官方下载"
                 : "Official sources";
             _officialCard.Description = chinese
-                ? "只使用 GitHub、npm、python.org 和微软官方地址，不使用第三方镜像。"
-                : "Use only GitHub, npm, python.org and Microsoft official endpoints.";
+                ? "适合海外用户，从Github/npm等官方源下载"
+                : "For overseas users: download from official sources such as GitHub and npm";
             _officialCard.CardPath = chinese
                 ? "适合能够稳定访问官方源的网络"
                 : "For stable access to official sources";
+            _backendCard.CardTitle = chinese ? "大肥鱼国内加速（备用）" : "Dafeiyu mainland acceleration (backup)";
+            _backendCard.Description = chinese ? "使用软件自己的后端服务器下载；速度可能稍慢，但适配大部分国内用户连接" : "Download through the application's backend; speeds may be slower, but connectivity suits most users in mainland China";
+            _backendCard.CardPath = chinese ? "大肥鱼后端服务器" : "Dafeiyu backend server";
 
             Footnote.Text = chinese
                 ? "下载源只影响下载速度，不影响最终安装内容。"
@@ -298,8 +325,18 @@ namespace DshInstaller.Pages
             bool official =
                 InstallSession.Current.SourcePreference
                     == MirrorSource.Official;
-            _chinaCard.SetSelectedQuietly(!official);
+            bool backend = BackendDownloadSource.IsSelected(InstallSession.Current.SourcePreference);
+            _chinaCard.SetSelectedQuietly(!official && !backend);
             _officialCard.SetSelectedQuietly(official);
+            _backendCard.SetSelectedQuietly(backend);
+            BackendDownloadSource.SelectedPreference = InstallSession.Current.SourcePreference;
+        }
+
+        private void UpdateBackendAvailability()
+        {
+            bool online = _availabilityWindow?.BackendState == BackendConnectionState.Online;
+            _backendCard.IsEnabled = online;
+            _backendCard.Opacity = online ? 1 : 0.5;
         }
     }
 }

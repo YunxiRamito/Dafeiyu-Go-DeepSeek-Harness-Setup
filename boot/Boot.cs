@@ -31,6 +31,9 @@ using System.IO.Compression;
 using System.Net;
 using System.Reflection;
 using System.Security.Principal;
+using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
+using System.Web.Script.Serialization;
 using System.Threading;
 using System.Windows.Forms;
 using Microsoft.Win32;
@@ -68,6 +71,104 @@ internal static class Boot
 
     private const string DotNetDownloadPage = "https://dotnet.microsoft.com/download/dotnet/8.0";
     private const string WinAppRuntimeDownloadPage = "https://aka.ms/windowsappsdk/1.8/latest";
+    private const string BackendBase = "https://202.189.21.218:8787";
+    private static bool BackendSelected;
+    private static string BackendSha256;
+
+    private static bool ReadBackendSelection(string[] args)
+    {
+        foreach (string argument in args)
+        {
+            if (String.Equals(argument, "--source=backend", StringComparison.OrdinalIgnoreCase)) return true;
+            if (String.Equals(argument, "--source=Official", StringComparison.OrdinalIgnoreCase)
+                || String.Equals(argument, "--source=China", StringComparison.OrdinalIgnoreCase)) return false;
+        }
+        try
+        {
+            string state = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "DeepSeekHarness", "installer-state.json");
+            if (File.Exists(state))
+            {
+                var values = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(File.ReadAllText(state));
+                foreach (var pair in values)
+                    if (String.Equals(pair.Key, "SourcePreference", StringComparison.OrdinalIgnoreCase))
+                        return String.Equals(pair.Value as string, "backend", StringComparison.OrdinalIgnoreCase);
+            }
+            foreach (RegistryKey root in new RegistryKey[] { Registry.CurrentUser, Registry.LocalMachine })
+                using (RegistryKey key = root.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Uninstall\DeepSeekHarness"))
+                    if (key != null && String.Equals(key.GetValue("SourcePreference") as string, "backend", StringComparison.OrdinalIgnoreCase)) return true;
+        }
+        catch { }
+        return false;
+    }
+
+    private sealed class BackendWebClient : WebClient
+    {
+        protected override WebRequest GetWebRequest(Uri address)
+        {
+            HttpWebRequest request = (HttpWebRequest)base.GetWebRequest(address);
+            ApplyBackendCertificate(request);
+            return request;
+        }
+    }
+
+    private static void ApplyBackendCertificate(HttpWebRequest request)
+    {
+        if (request.Address.Host != "202.189.21.218" || request.Address.Port != 8787) return;
+        request.AllowAutoRedirect = false;
+        request.Proxy = null;
+        request.Timeout = 15000; request.ReadWriteTimeout = 20000;
+        request.ServerCertificateValidationCallback = delegate(object sender, X509Certificate certificate, X509Chain chain, System.Net.Security.SslPolicyErrors errors)
+        {
+            if (certificate == null) return false;
+            using (SHA256 hash = SHA256.Create())
+                return BitConverter.ToString(hash.ComputeHash(certificate.GetPublicKey())).Replace("-", "").ToLowerInvariant()
+                    == "78657c8e98557dec7f5974f1f81ae2a8a4f4a97321e230fc85662f3c4e8ccfb5";
+        };
+    }
+
+    private static string PrepareBackendDownload(string url, ProgressWindow window)
+    {
+        string escaped = Uri.EscapeDataString(url);
+        DateTime started = DateTime.UtcNow;
+        DateTime activity = started;
+        long previousReceived = 0;
+        BackendSha256 = null;
+        window.SetDetail("缓存中 · 0 B · 大肥鱼国内加速");
+        while ((DateTime.UtcNow - started).TotalMinutes < 15)
+        {
+            string status = DownloadTextPumped(BackendBase + "/api/download/status?url=" + escaped, window, 8);
+            if (status == null) throw new IOException("后端下载准备失败。");
+            var values = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(status);
+            object ready; object hashValue;
+            string hash = values.TryGetValue("sha256", out hashValue) ? hashValue as string : null;
+            if (values.TryGetValue("ready", out ready) && ready is bool && (bool)ready && hash != null && hash.Length == 64)
+            {
+                BackendSha256 = hash;
+                return BackendBase + "/api/download?url=" + escaped + "&sha256=" + BackendSha256;
+            }
+            object receivedValue; object totalValue;
+            long received = values.TryGetValue("receivedBytes", out receivedValue) && receivedValue != null
+                ? Convert.ToInt64(receivedValue) : 0;
+            long total = values.TryGetValue("totalBytes", out totalValue) && totalValue != null
+                ? Convert.ToInt64(totalValue) : 0;
+            if (received != previousReceived) activity = DateTime.UtcNow;
+            previousReceived = received;
+            window.SetDetail("缓存中 · " + FormatBytes(received)
+                + (total > 0 ? " / " + FormatBytes(total) : "") + " · 大肥鱼国内加速");
+            if ((DateTime.UtcNow - activity).TotalSeconds > 60)
+                throw new IOException("后端缓存60秒没有新数据。");
+            DateTime next = DateTime.UtcNow.AddSeconds(2);
+            while (DateTime.UtcNow < next) { Application.DoEvents(); Thread.Sleep(40); }
+        }
+        throw new IOException("后端下载准备超时。");
+    }
+
+    private static bool ValidateBackendFile(string file)
+    {
+        using (SHA256 hash = SHA256.Create())
+        using (FileStream input = File.OpenRead(file))
+            return String.Equals(BitConverter.ToString(hash.ComputeHash(input)).Replace("-", ""), BackendSha256, StringComparison.OrdinalIgnoreCase);
+    }
 
     [STAThread]
     private static int Main(string[] args)
@@ -75,6 +176,7 @@ internal static class Boot
         try
         {
             Log("=== boot started ===");
+            BackendSelected = ReadBackendSelection(args);
             // 这一行是排查的关键:虚拟机上说"装完报错"时,第一件事就是看这里到底认没认到运行库
             Log("运行库:" + DescribeRuntimes());
 
@@ -595,14 +697,20 @@ internal static class Boot
     /// 期间一个消息都不处理 —— 系统直接给窗口盖上"未响应"(实测踩过)。
     /// 这里改成异步 + DoEvents 泵 + 硬超时,卡的是网络而不是界面。
     /// </summary>
-    private static string DownloadTextPumped(string url, ProgressWindow window, int timeoutSeconds)
+    private static string DownloadTextPumped(string url, ProgressWindow window, int timeoutSeconds, bool useBackend = true)
     {
+        if (BackendSelected && useBackend && !url.StartsWith(BackendBase, StringComparison.OrdinalIgnoreCase))
+        {
+            string backend = DownloadTextPumped(BackendBase + "/api/fetch?url=" + Uri.EscapeDataString(url), window, timeoutSeconds, false);
+            if (backend != null) return backend;
+            return DownloadTextPumped(url, window, timeoutSeconds, false);
+        }
         try
         {
             ServicePointManager.SecurityProtocol =
                 SecurityProtocolType.Tls12 | SecurityProtocolType.Tls11 | SecurityProtocolType.Tls;
 
-            using (WebClient client = new WebClient())
+            using (WebClient client = new BackendWebClient())
             {
                 client.Encoding = System.Text.Encoding.UTF8;
 
@@ -954,6 +1062,7 @@ internal static class Boot
         try
         {
             HttpWebRequest request = (HttpWebRequest)WebRequest.Create(url);
+            ApplyBackendCertificate(request);
             request.UserAgent = "DSH-Installer-Boot";
             request.Timeout = 25000;
             request.ReadWriteTimeout = 25000;
@@ -1022,6 +1131,7 @@ internal static class Boot
             try
             {
                 HttpWebRequest request = (HttpWebRequest)WebRequest.Create(url);
+                ApplyBackendCertificate(request);
                 request.UserAgent = "DSH-Installer-Boot";
                 request.Timeout = 60000;
                 request.ReadWriteTimeout = 60000;
@@ -1106,6 +1216,16 @@ internal static class Boot
 
     private static bool Download(ProgressWindow window, ProgressPlan plan, string url, string target)
     {
+        if (BackendSelected && !url.StartsWith(BackendBase, StringComparison.OrdinalIgnoreCase))
+        {
+            try
+            {
+                string backend = PrepareBackendDownload(url, window);
+                if (Download(window, plan, backend, target) && ValidateBackendFile(target)) return true;
+                try { if (File.Exists(target)) File.Delete(target); } catch { }
+            }
+            catch (Exception exception) { Log("后端运行组件下载失败，回退原下载源:" + exception.Message); }
+        }
         // 大文件先试 8 连接分段(运行库那两个包正是最大的)。
         // 拿不到 Range 或者文件不大,它就返回 false,原样走下面的单连接逻辑。
         if (TrySegmentedDownload(window, plan, url, target))
@@ -1124,7 +1244,7 @@ internal static class Boot
                 ServicePointManager.SecurityProtocol =
                     SecurityProtocolType.Tls12 | SecurityProtocolType.Tls11 | SecurityProtocolType.Tls;
 
-                using (WebClient client = new WebClient())
+                using (WebClient client = new BackendWebClient())
                 {
                     client.Headers.Add("User-Agent", "DSH-Installer-Boot");
 

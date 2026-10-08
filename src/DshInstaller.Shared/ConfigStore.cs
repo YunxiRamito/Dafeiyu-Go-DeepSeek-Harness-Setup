@@ -24,6 +24,7 @@ namespace DshInstaller.Shared
         public string LastPage { get; set; }
         public string InstalledAt { get; set; }
         public string InstallerVersion { get; set; }
+        public string SourcePreference { get; set; }
 
         /// <summary>
         /// 安装器自己留在哪(卸载时靠它再拉起来)。引导程序解压出来的那份,**装完不清理**。
@@ -55,6 +56,7 @@ namespace DshInstaller.Shared
         private static readonly JsonSerializerOptions Options = new JsonSerializerOptions
         {
             WriteIndented = true,
+            PropertyNameCaseInsensitive = true,
             Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
         };
 
@@ -62,6 +64,8 @@ namespace DshInstaller.Shared
         {
             get
             {
+                string overridePath = Environment.GetEnvironmentVariable("DAFEIYU_INSTALLER_SETTINGS_DIRECTORY");
+                if (!String.IsNullOrWhiteSpace(overridePath)) return Path.GetFullPath(overridePath);
                 return Path.Combine(
                     Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                     WellKnown.ConfigFolderName);
@@ -172,6 +176,7 @@ namespace DshInstaller.Shared
                             UninstallerPath = key.GetValue("UninstallString") as string,
                             Scope = i == 0 ? "user" : "machine",
                             InstallerVersion = key.GetValue("DisplayVersion") as string,
+                            SourcePreference = NormalizeSourcePreference(key.GetValue("SourcePreference") as string),
                         };
 
                         if (!string.IsNullOrEmpty(state.ComponentsRoot))
@@ -212,6 +217,36 @@ namespace DshInstaller.Shared
             catch
             {
             }
+        }
+
+        public static string NormalizeSourcePreference(string preference)
+        {
+            string value = preference?.Trim().ToLowerInvariant();
+            return value == "china" || value == "backend" || value == "official" ? value : null;
+        }
+
+        // Kept beside the launcher so all-users installs do not depend on the installer's user profile.
+        public static bool SaveLauncherDefaults(string launcherRoot, string dshRoot, string sourcePreference)
+        {
+            string source = NormalizeSourcePreference(sourcePreference);
+            if (source == null || String.IsNullOrWhiteSpace(launcherRoot) || String.IsNullOrWhiteSpace(dshRoot)
+                || !Path.IsPathFullyQualified(launcherRoot) || !Path.IsPathFullyQualified(dshRoot)) return false;
+            try
+            {
+                Directory.CreateDirectory(launcherRoot);
+                string path = Path.Combine(launcherRoot, "installer-defaults.json");
+                string json = JsonSerializer.Serialize(new
+                {
+                    SchemaVersion = 1,
+                    DshRoot = Path.GetFullPath(dshRoot),
+                    SourcePreference = source
+                }, Options);
+                string temporaryPath = path + ".tmp";
+                File.WriteAllText(temporaryPath, json, new UTF8Encoding(false));
+                File.Move(temporaryPath, path, true);
+                return true;
+            }
+            catch { return false; }
         }
 
         public static string ReadDshRoot()

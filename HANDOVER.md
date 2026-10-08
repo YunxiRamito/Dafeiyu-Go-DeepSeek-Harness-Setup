@@ -1,10 +1,42 @@
 # 交接:大肥鱼Go / Dafeiyu-Go
 
-> 给下一个接手的人(或下一个 AI)。当前源码版本为 `1.6.0`（**已于 2026-10-07 发布**：标签 `v1.6.0` 已推、Release 与资产已上传；公开版本以 Releases 为准），启动器与安装器**已解耦**，不再要求两边版本号相同。
+## 2026-10-08 完整 DSH 本地部署与立即 UAC（优先于历史）
+
+- 最终测试包 `dist/test-1.7.0-local-dsh-tray-bans-20261008/DSH-Installer-Setup.exe`，1.7.0.0，11,441,991 字节，SHA-256 `398B4C8B941635CA8DE114B1EBAB133462019532F7482175F8084CCFA08D0F22`。外层 `boot/Boot.manifest` 为 requireAdministrator，最终EXE嵌入资源已验证，双击立即UAC；缺少运行库仍使用现有下载/安装窗口。
+- 默认旧范围改官方 latest 并先解析精确版本，后端源改“备用”并说明可能稍慢但适配大部分国内连接。后端源本体不执行 npm install，完整 Windows x64 / Node 22 ZIP 经SHA、安全路径、CLI/原生依赖离线验证后事务提交；Node复用只允许22.x。服务器已提供 `0.2.0-rc.2` / `0.2.1-alpha.1` 两个包。已有DSH沿用复用，不强制升级；测试新本体用新目录。
+- 推荐插件仍单独联网，tar.gz 改 .NET UTF-8/PAX（跳过全局元数据头），pnpm只装生产依赖；插件失败回退该次profile并显示完成页警告，继续其它插件。每步日志含耗时，Observer/ProcessRunner重复落日志已消除。PATH同步广播约14秒未修改。
+- [验收报告](../preview-artifacts/1.7.0-local-dsh-tray-bans-20261008/validation.md)：121个源码输入、45个payload、EXE附加ZIP和UAC资源检查通过；故障/归档25项、bundle纯回归60项、两个真实包各63项；线上完整本体隔离部署114.4秒、实际失败归档解出68个中文Markdown。未执行真实安装/卸载/UAC/PATH变更，未正式发布。
+- 公开启动器manifest仍为1.6.0；本轮启动器封禁/通知/托盘修复请用 `../Dafeiyu-Go-DeepSeek-Harness-Click-To-Run/DeepSeekHarness-1.7.0-local-dsh-tray-bans-review.zip` 测试。日志在 `%LOCALAPPDATA%\DeepSeekHarness\installer.log`（同目录ui/crash），Boot日志 `%TEMP%\dsh-boot.log`。
+
+## 2026-10-08 安装失败与后端下载修复（当前安装器/服务端，以本节为准）
+
+用户提供 `Dafeiyu-Go-logs-20261008-142359.zip`，已由 `installer_backend_audit` 子智能体专项自查，主任务完成服务器诊断、JSON/回滚修复、构建和部署。
+
+- 新 [安装器复测 EXE](<G:/DeepSeek DSH/DSH Works/Project/Dafeiyu-Go/Dafeiyu-Go-DeepSeek-Harness-Setup/dist/test-1.7.0-backend-repair-20261008/DSH-Installer-Setup.exe>)：1.7.0.0，11,434,433 字节，SHA-256 `A211CD51B12E262B4B96E433289AAECA770B77738B5647A603C032774F4FC466`。此前 download-fixes 测试包保留作历史，复测使用此包。运行库仍走普通窗口检测、缺少时按需下载/安装；未正式发布版本。
+- 已修复 Node 从 C 盘临时目录部署到其它盘的 Directory.Move 错误；npm 内 ZIP SHA 不匹配时严格校验并换独立发行源；官方兜底不再被再次包装成同一后端；缓存阶段显示真实字节/总量/速度，连续60秒无增长换源，8秒响应头/元数据限时并可取消。
+- 推荐插件与安装清单 JSON writer 增加 TypeInfoResolver；回滚只清理本次创建的目录，空路径跳过；正在运行的 Boot payload 由引导程序在安装器退出后清理。
+- 服务器原写死代理对 Node/raw/npm/Python 超时而直连正常，已移除过时默认，保留显式代理配置；连接10秒、头20秒限时，补 download.microsoft.com 官方运行库跳转白名单。新生产镜像 `sha256:4cc21790e9226124d66f7c8a66853aa3267359316e4c9ca9d07d7ac86b5012f8`，备份 `/home/dafeiyu/developer-center-backups/download-repair-20261008t063711z`，含回滚脚本。数据库/反馈、凭据、TLS和缓存卷未变更，API/db healthy、TLS running。
+- 验证：客户端下载51项、JSON/回滚10项、服务端下载48项通过；安装器/服务端 Release 都是0警告/错误。116个安装器输入哈希及45个附加payload文件校验通过。实际后端Node清单约1至2秒，35.6MB冷缓存约10秒，完整本机下载21.7秒/约1.64MB/s且SHA正确；他人网络速度仍需复测。
+- 完整证据和复现见 [本轮故障验收](<G:/DeepSeek DSH/DSH Works/Project/Dafeiyu-Go/preview-artifacts/1.7.0-installer-backend-repair-20261008/validation.md>)。原生真实安装/卸载/UAC尚未执行；正式manifest/tag/Release没有变化。启动器仍使用14:19的最新feedback-review ZIP，SHA `AF6C6C3D853ED58B31DA43F01D4CD9951F2860DF9C54F8037A91AB3CD2ECA256`。
+
+> 给下一个接手的人(或下一个 AI)。当前源码和本地测试包版本为 `1.7.0.0`，尚未正式发布；公开历史版本为 `1.6.0`（2026-10-07 已发布，公开版本以 Releases 为准）。启动器与安装器已解耦，不再要求两边版本号相同。
 > 第一入口请先读父级 `G:\DeepSeek DSH\DSH Works\Project\Dafeiyu-Go\HANDOVER.md`，再读本文件、
 > `STATUS.md`、`HANDOVER-1.5.0-installer.md`、`RELEASE.md` 和 `TRANSITION.md`。
 
-最后更新:2026-10-07（1.6.0 安装器已发布）
+最后更新:2026-10-08（1.7.0 本地测试包；公开 1.6.0）
+
+## 2026-10-08 安装器测试包与引导流程
+
+- 测试入口：`dist/test-1.7.0-download-fixes-20261008/DSH-Installer-Setup.exe`，1.7.0.0，11,432,005 字节，SHA-256 `1E50347934A332906E38A011EEF16277E0D262B8A0C7880F9BC1214FA6B91DC3`。未创建正式 Release/tag 或更新公开 manifest。
+- 沿用现有框架依赖发布：Boot 启动时检查 .NET 桌面运行时和 Windows App Runtime，缺少时显示普通下载/安装窗口，需要安装权限时申请提权，准备完成后启动向导。用户本轮追问确认了这一引导方式，测试包没有改成捆绑运行库的自包含包。
+- 使用父级 `preview-artifacts/1.7.0-download-fixes-20261008/Build-Installer.ps1` 的隔离快照构建，111 个输入哈希一致，Release 0 警告/错误，附加 payload 的 45 个文件校验通过。尚未执行真实安装、卸载和 UAC 流程。
+- 本轮新增反馈图片和封禁功能由独立的最新启动器检查 ZIP 测试；本安装器测试包不会替代启动器的反馈功能验收。
+
+## 2026-10-08 未发布补充：来源继承
+
+安装器成功收尾校验后将 `SourcePreference` 保存到 `installer-state.json`、安装清单和卸载注册表，并在实际启动器目录保存 `installer-defaults.json`。默认文件只含 schema、绝对 DSH 路径和已知来源，机器范围或自定义组件安装不依赖安装器账号的 LocalAppData。首次创建启动器设置读取该默认，再回退路径匹配的本地状态；`china=>Accelerated+Auto`、`backend=>Accelerated+backend`、`official=>Official+Auto`。已有用户设置不被修复或默认文件覆盖。
+
+安装器会话和修复恢复保存的来源；静默支持 `--source=china|backend|official`，修复显式来源参数优先于保存记录。ConfigStore 测试可用 `DAFEIYU_INSTALLER_SETTINGS_DIRECTORY` 隔离。InstallerSourceDefaults 35 项与 ProxyScope 32 项通过；Probe 增加4项修复有效来源断言，等待主任务完整构建。此补充未提交、未推送、未发布，不表示公开安装器版本变化。
 
 ## 1.6.0 本轮交接（2026-10-07 已发布）
 

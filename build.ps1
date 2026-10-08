@@ -74,7 +74,7 @@ if (-not $SkipBoot) {
     $bootPath = Join-Path $OutputDirectory 'Boot.exe'
     & $frameworkCompiler @compilerArgs /target:winexe /out:$bootPath `
         /r:System.IO.Compression.dll /r:System.IO.Compression.FileSystem.dll `
-        /r:System.Windows.Forms.dll /r:System.Drawing.dll $bootSource
+        /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:System.Web.Extensions.dll $bootSource
     if ($LASTEXITCODE -ne 0) { throw "引导程序编译失败: $LASTEXITCODE" }
 
     $uninstallPath = Join-Path $OutputDirectory 'DSH-Uninstall.exe'

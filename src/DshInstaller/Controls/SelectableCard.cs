@@ -19,6 +19,17 @@ namespace DshInstaller.Controls
     /// </summary>
     internal sealed class SelectableCard : ContentControl
     {
+        protected override Microsoft.UI.Xaml.Automation.Peers.AutomationPeer OnCreateAutomationPeer()
+            => new CardAutomationPeer(this);
+
+        private sealed class CardAutomationPeer : Microsoft.UI.Xaml.Automation.Peers.FrameworkElementAutomationPeer
+        {
+            internal CardAutomationPeer(SelectableCard owner) : base(owner) { }
+            protected override Microsoft.UI.Xaml.Automation.Peers.AutomationControlType GetAutomationControlTypeCore()
+                => Microsoft.UI.Xaml.Automation.Peers.AutomationControlType.Group;
+            protected override string GetNameCore() => ((SelectableCard)Owner).CardTitle;
+        }
+
         private readonly Border _surface;
         private readonly Border _dot;
         private readonly Border _dotInner;

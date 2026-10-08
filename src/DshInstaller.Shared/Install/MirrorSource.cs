@@ -11,12 +11,20 @@ namespace DshInstaller.Shared.Install
     /// </summary>
     public static class MirrorSource
     {
+        public const string Backend = "Backend";
+        public static List<string> BackendUrls(string official, string preference)
+        {
+            var urls = new List<string>();
+            if (BackendDownloadSource.IsSelected(preference)) urls.Add(BackendDownloadSource.Wrap(official));
+            urls.Add(official); return urls;
+        }
         public const string Official = "official";
         public const string China = "china";
 
         /// <summary>按偏好给出候选地址:选中的排前面,另一条兜底。</summary>
         public static List<string> Order(string preference, string officialUrl, string chinaUrl)
         {
+            if (BackendDownloadSource.IsSelected(preference)) return BackendUrls(officialUrl, preference);
             List<string> result = new List<string>();
             if (string.Equals(preference, China, StringComparison.OrdinalIgnoreCase))
             {
@@ -47,6 +55,7 @@ namespace DshInstaller.Shared.Install
         public static List<string> NodeUrls(string version, string fileName, string preference)
         {
             string official = NodeOfficial(version, fileName);
+            if (BackendDownloadSource.IsSelected(preference)) return BackendUrls(official, preference);
             string npmmirror = "https://npmmirror.com/mirrors/node/" + version + "/" + fileName;
             string ustc = "https://mirrors.ustc.edu.cn/node/" + version + "/" + fileName;
             string nju = "https://mirror.nju.edu.cn/nodejs-release/" + version + "/" + fileName;
@@ -71,6 +80,7 @@ namespace DshInstaller.Shared.Install
         /// <summary>查 Node 最新 LTS 时用的候选清单地址。</summary>
         public static List<string> NodeIndexUrls(string preference)
         {
+            if (BackendDownloadSource.IsSelected(preference)) return BackendUrls("https://nodejs.org/dist/index.json", preference);
             List<string> result = new List<string>();
             if (string.Equals(preference, China, StringComparison.OrdinalIgnoreCase))
             {
@@ -91,11 +101,12 @@ namespace DshInstaller.Shared.Install
         }
 
         /// <summary>查最新的 Node 22 LTS 版本号。</summary>
-        public static string ResolveLatestNodeVersion(string preference, int major)
+        public static string ResolveLatestNodeVersion(string preference, int major,
+            Action<DownloadProgress> progress = null, Func<bool> cancellation = null)
         {
             List<string> urls = NodeIndexUrls(preference);
 
-            string json = DownloadEngine.DownloadText(urls);
+            string json = DownloadEngine.DownloadText(urls, progress: progress, cancellation: cancellation);
             if (string.IsNullOrEmpty(json))
             {
                 return null;
@@ -159,6 +170,7 @@ namespace DshInstaller.Shared.Install
         /// </summary>
         public static List<string> MinGitUrls(string preference, string version)
         {
+            if (BackendDownloadSource.IsSelected(preference)) return BackendUrls(MinGitOfficial(version), preference);
             string file = "MinGit-" + version + "-64-bit.zip";
             string folder = "v" + version + ".windows.1";
             List<string> result = new List<string>();
@@ -178,6 +190,7 @@ namespace DshInstaller.Shared.Install
         /// <summary>Python embed 的候选地址(实测 华为云 14,961 KB/s / npmmirror 7,600 KB/s / python.org 45 KB/s)。</summary>
         public static List<string> PythonUrls(string preference, string version)
         {
+            if (BackendDownloadSource.IsSelected(preference)) return BackendUrls(PythonOfficial(version), preference);
             string file = "python-" + version + "-embed-amd64.zip";
             List<string> result = new List<string>();
 
@@ -205,6 +218,7 @@ namespace DshInstaller.Shared.Install
         /// </summary>
         public static List<string> PnpmUrls(string preference, string version)
         {
+            if (BackendDownloadSource.IsSelected(preference)) return BackendUrls(PnpmOfficial(version), preference);
             List<string> result = new List<string>();
 
             if (IsChina(preference))
@@ -228,6 +242,7 @@ namespace DshInstaller.Shared.Install
 
         public static string NpmRegistry(string preference)
         {
+            if (BackendDownloadSource.IsSelected(preference)) return BackendDownloadSource.BaseUrl + "/api/npm/";
             return string.Equals(preference, China, StringComparison.OrdinalIgnoreCase)
                 ? "https://registry.npmmirror.com"
                 : "https://registry.npmjs.org";
@@ -247,6 +262,7 @@ namespace DshInstaller.Shared.Install
             {
                 return result;
             }
+            if (BackendDownloadSource.IsSelected(preference)) return BackendUrls(githubUrl, preference);
 
             if (!IsChina(preference))
             {
@@ -337,6 +353,7 @@ namespace DshInstaller.Shared.Install
         /// </summary>
         public static string DescribeSource(string url, int ordinal)
         {
+            if (BackendDownloadSource.IsBackendUrl(url)) return SharedText.T("大肥鱼国内加速", "Dafeiyu mainland acceleration");
             string host = HostOf(url);
             if (IsMirrorUrl(url))
             {

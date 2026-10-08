@@ -14,7 +14,8 @@ namespace DshInstaller.Shared.Install
             IList<string> specs,
             Action<string, double> report,
             Action<string> log,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default,
+            Action<string> warning = null)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -89,8 +90,11 @@ namespace DshInstaller.Shared.Install
                         + raw);
                 }
 
-                PluginDescriptor descriptor =
-                    PluginDescriptor.Parse(raw);
+                string currentProfile = Path.Combine(profileDirectory, "package.json");
+                string beforePlugin = File.Exists(currentProfile) ? File.ReadAllText(currentProfile) : null;
+                try
+                {
+                PluginDescriptor descriptor = PluginDescriptor.Parse(raw);
                 if (descriptor.IsGitHub)
                 {
                     string key = InstallGitHubPlugin(
@@ -132,6 +136,15 @@ namespace DshInstaller.Shared.Install
                 {
                     throw new InvalidOperationException(
                         "无法识别推荐插件安装表达式: " + raw);
+                }
+                }
+                catch (OperationCanceledException) { throw; }
+                catch (Exception exception)
+                {
+                    RestoreProfileSnapshot(currentProfile, beforePlugin, log);
+                    string message = "推荐插件未完成：" + display + " · " + exception.Message;
+                    if (warning != null) warning(message); else log?.Invoke(message);
+                    Report(report, "已跳过 " + display + "，继续安装其它插件", endPercent);
                 }
             }
 
@@ -296,7 +309,7 @@ namespace DshInstaller.Shared.Install
                     "安装插件中 · 正在解压 " + display,
                     downloadEnd);
                 DeleteDirectory(extractRoot);
-                ArchiveExtractor.Extract(archive, extractRoot);
+                ArchiveExtractor.Extract(archive, extractRoot, cancellationToken);
 
                 string source = FindPluginSource(extractRoot);
                 if (String.IsNullOrWhiteSpace(source))
@@ -406,17 +419,19 @@ namespace DshInstaller.Shared.Install
                 500,
                 1000))
             {
-                Dictionary<string, string> environment =
-                    new Dictionary<string, string>
+                Dictionary<string, string> environment = PackageDownloadEnvironment.Create(sourcePreference)
+                    ?? new Dictionary<string, string>
                     {
                         ["npm_config_registry"] =
                             MirrorSource.NpmRegistry(sourcePreference),
                         ["GIT_TERMINAL_PROMPT"] = "0"
                     };
+                environment["npm_config_update_notifier"] = "false";
                 result = ProcessRunner.Run(
                     "cmd.exe",
                     "/d /s /c \"\"" + pnpm + "\" add \""
-                        + packageSpec.Replace("\"", "\\\"")
+                        + PackageDownloadEnvironment.ResolvePackageSpecifier(packageSpec,
+                            BackendDownloadSource.IsSelected(sourcePreference)).Replace("\"", "\\\"")
                         + "\" --reporter=append-only\"",
                     profileDirectory,
                     30 * 60 * 1000,
@@ -487,17 +502,18 @@ namespace DshInstaller.Shared.Install
                 500,
                 1000))
             {
-                Dictionary<string, string> environment =
-                    new Dictionary<string, string>
+                Dictionary<string, string> environment = PackageDownloadEnvironment.Create(sourcePreference)
+                    ?? new Dictionary<string, string>
                     {
                         ["npm_config_registry"] =
                             MirrorSource.NpmRegistry(sourcePreference),
                         ["GIT_TERMINAL_PROMPT"] = "0"
                     };
+                environment["npm_config_update_notifier"] = "false";
                 result = ProcessRunner.Run(
                     "cmd.exe",
                     "/d /s /c \"\"" + pnpm
-                        + "\" install --reporter=append-only\"",
+                        + "\" install --prod --reporter=append-only\"",
                     workingDirectory,
                     30 * 60 * 1000,
                     delegate(string line)
@@ -820,6 +836,7 @@ namespace DshInstaller.Shared.Install
                 temporary,
                 root.ToJsonString(new JsonSerializerOptions
                 {
+                    TypeInfoResolver = new System.Text.Json.Serialization.Metadata.DefaultJsonTypeInfoResolver(),
                     WriteIndented = true,
                     Encoder = System.Text.Encodings.Web.JavaScriptEncoder
                         .UnsafeRelaxedJsonEscaping

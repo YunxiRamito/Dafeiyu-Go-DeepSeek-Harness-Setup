@@ -16,7 +16,7 @@ namespace DshInstaller
     ///   --silent
     ///   --dsh-root=&lt;目录&gt;  --launcher-root=&lt;目录&gt;  --components-root=&lt;目录&gt;
     ///   --scope=machine|user          (默认 user)
-    ///   --source=china|official       (默认 china)
+    ///   --source=china|backend|official (默认 china)
     ///   --git  --pnpm  --python       装对应可选组件
     ///   --no-shortcut  --no-autostart  --no-launch
     ///   --no-runtime                  不装运行库(默认会装 .NET 8 桌面运行时与 Windows App Runtime)
@@ -61,6 +61,7 @@ namespace DshInstaller
         public static bool AllUsers { get; private set; }
         public static bool ScopeSpecified { get; private set; }
         public static string Source { get; private set; } = "china";
+        public static bool SourceSpecified { get; private set; }
         public static string PreviewStyle { get; private set; } = "auto";
         public static bool WantGit { get; private set; }
         public static bool WantPnpm { get; private set; }
@@ -225,7 +226,8 @@ namespace DshInstaller
                         break;
 
                     case "source":
-                        Source = value.StartsWith("off", StringComparison.OrdinalIgnoreCase) ? "official" : "china";
+                        SourceSpecified = true;
+                        Source = Shared.ConfigStore.NormalizeSourcePreference(value) ?? "china";
                         break;
 
                     case "preview-style":

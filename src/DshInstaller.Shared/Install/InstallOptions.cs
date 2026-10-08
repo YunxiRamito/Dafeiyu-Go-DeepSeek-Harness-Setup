@@ -26,7 +26,12 @@ namespace DshInstaller.Shared.Install
         public bool UseExistingDsh { get; set; }
 
         /// <summary>下载源偏好(见 <see cref="MirrorSource"/>)。</summary>
-        public string SourcePreference { get; set; } = MirrorSource.China;
+        private string sourcePreference = MirrorSource.China;
+        public string SourcePreference
+        {
+            get => sourcePreference;
+            set { sourcePreference = value; BackendDownloadSource.SelectedPreference = value; }
+        }
 
         /// <summary>需要装的组件(Node 是硬前置,必然要装)。</summary>
         public bool InstallNode { get; set; } = true;
@@ -40,7 +45,7 @@ namespace DshInstaller.Shared.Install
         /// DSH 本体要装的版本(空 = 用 <see cref="WellKnown.DshPackageVersion"/> 那个默认)。
         ///
         /// 值就是 npm 的版本说明:可以是 `latest` / `next` 这类 tag,也可以是
-        /// `0.2.0-rc.1` / `^0.1.5-rc.1` 这样的版本或范围。由版本页填,安装时原样拼进 npm install。
+        /// 具体版本由标签解析得到。后端完整包使用精确版本，其它下载源也允许 npm semver 范围。
         /// </summary>
         public string DshVersion { get; set; }
 
@@ -144,6 +149,10 @@ namespace DshInstaller.Shared.Install
             {
                 return false;
             }
+            if (string.Equals(id, "node", System.StringComparison.OrdinalIgnoreCase)
+                && BackendDownloadSource.IsSelected(SourcePreference)
+                && !(item.Version ?? "").Trim().TrimStart('v', 'V').StartsWith("22.", System.StringComparison.Ordinal))
+                return false;
 
             try
             {

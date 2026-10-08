@@ -50,8 +50,8 @@ namespace DshInstaller.Shared
         /// <summary>DSH 的 npm 包名。</summary>
         public const string DshPackage = "@deepseek-ai/dsh";
 
-        /// <summary>DSH 主版本范围。</summary>
-        public const string DshPackageVersion = "^0.1.5-rc.1";
+        /// <summary>默认跟随官方 npm latest 标签，安装前解析实际版本。</summary>
+        public const string DshPackageVersion = "latest";
 
         /// <summary>DSH 本体目录的标志文件(相对 DSH 根)。</summary>
         public const string DshMarker = @"node_modules\@deepseek-ai\dsh\lib\bin.js";

@@ -17,6 +17,7 @@ namespace DshInstaller.Shared.Install
         public long ReceivedBytes { get; set; }
         public long TotalBytes { get; set; }
         public double BytesPerSecond { get; set; }
+        public bool IsCachePreparing { get; set; }
 
         /// <summary>
         /// 当前正在用的那条源,已经是给用户看的人话(形如「镜像 1（gh-proxy.com）」)。
@@ -180,6 +181,7 @@ namespace DshInstaller.Shared.Install
             // 三种代理模式(不使用 / 跟随系统 / 自定义)在这里落到 handler 上。
             // 回环地址(BypassProxyOnLocal)永远绕过 —— 探本机 8787 不能走代理。
             ProxySupport.Apply(handler);
+            BackendDownloadSource.Apply(handler);
 
             HttpClient client = new HttpClient(handler);
 
@@ -211,7 +213,8 @@ namespace DshInstaller.Shared.Install
             Func<bool> cancellation,
             Func<string, bool> onSourceFailed = null,
             Action<string> onNotice = null,
-            bool allowSegmented = true)
+            bool allowSegmented = true,
+            Action<string> validateCompleted = null)
         {
             if (urls == null || urls.Count == 0)
             {
@@ -227,7 +230,7 @@ namespace DshInstaller.Shared.Install
             // 分流之后候选本身就是人工排好的「国内镜像 → 官方兜底」,再花十几秒测一遍
             // 只是让用户干等(测速阶段界面是不动的)。真遇到慢的源,下载过程中会自动换
             // —— 见下面"连续 5 秒低于 60 KB/s"那条,那才是真正管用的判据。
-            List<string> ordered = new List<string>(urls);
+            List<string> ordered = BackendDownloadSource.Candidates(urls);
 
             // 后台测速的共享状态:慢下来的时候去量别的源,量出真更快的才换。
             // 为什么要有"真更快"这一层:公共代理是**轮流抽风**的,不加判断就换
@@ -244,7 +247,7 @@ namespace DshInstaller.Shared.Install
             // 它是旁路:只在"支持 Range 且够大"时接活,任何一步不顺(探测、分段、合并、校验)
             // 都返回 false,这里就原样落到下面那套单连接逻辑。
             // 所以它的失败模式是"退化成以前那样",而不是"装不上"。
-            if (allowSegmented
+            if (allowSegmented && validateCompleted == null && !BackendDownloadSource.IsBackendUrl(ordered[0])
                 && SegmentedDownloader.TryDownload(
                     ordered,
                     targetPath,
@@ -302,6 +305,10 @@ namespace DshInstaller.Shared.Install
 
                 try
                 {
+                    BackendDownloadSource.EnsureReady(url, progress, cancellation);
+                    if (allowSegmented && (validateCompleted != null || BackendDownloadSource.IsBackendUrl(url))
+                        && SegmentedDownloader.TryDownload(new List<string> { url }, targetPath, progress, cancellation, onNotice))
+                    { validateCompleted?.Invoke(targetPath); return url; }
                     DownloadOne(
                         url,
                         partialPath,
@@ -360,6 +367,7 @@ namespace DshInstaller.Shared.Install
                     }
 
                     File.Move(partialPath, targetPath);
+                    validateCompleted?.Invoke(targetPath);
                     InstallLogger.Write("下载完成(第 " + attempt + " 次尝试):" + url + " -> " + targetPath);
                     return url;
                 }
@@ -385,6 +393,8 @@ namespace DshInstaller.Shared.Install
                 }
                 catch (Exception exception)
                 {
+                    // A fully downloaded but invalid archive must not seed a later Range request.
+                    if (File.Exists(targetPath)) File.Delete(targetPath);
                     failures.Add("[" + attempt + "] " + url + " : " + exception.Message);
                     InstallLogger.Write(
                         "下载失败(第 " + attempt + "/" + MaxAttempts + " 次):" + url + " : " + exception.Message);
@@ -590,6 +600,7 @@ namespace DshInstaller.Shared.Install
             // 这个 CTS 管两件事:响应头超时、以及停滞时把底层连接掐掉。
             // 收到响应头之后要把超时撤掉,否则它会连带把正在读的正文一起掐断。
             using (CancellationTokenSource timeout = new CancellationTokenSource())
+            using (Timer monitor = new Timer(_ => { if (cancellation != null && cancellation()) timeout.Cancel(); }, null, 0, 100))
             using (HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Get, url))
             {
                 if (existing > 0)
@@ -597,6 +608,7 @@ namespace DshInstaller.Shared.Install
                     request.Headers.Range = new System.Net.Http.Headers.RangeHeaderValue(existing, null);
                 }
 
+                progress?.Invoke(new DownloadProgress { ReceivedBytes = existing, TotalBytes = -1, SourceLabel = sourceLabel });
                 timeout.CancelAfter(ResponseTimeoutMs);
 
                 HttpResponseMessage response;
@@ -606,6 +618,7 @@ namespace DshInstaller.Shared.Install
                 }
                 catch (Exception exception) when (exception is OperationCanceledException || exception is TaskCanceledException)
                 {
+                    if (cancellation != null && cancellation()) throw new OperationCanceledException();
                     throw new TimeoutException(SharedText.T(
                         "连接超时(服务器在 " + (ResponseTimeoutMs / 1000) + " 秒内未响应)",
                         "Connection timed out (no response within " + (ResponseTimeoutMs / 1000) + "s)"));
@@ -671,7 +684,7 @@ namespace DshInstaller.Shared.Install
                                 throw new OperationCanceledException();
                             }
 
-                            int read = ReadWithStallDetection(remote, buffer, timeout);
+                            int read = ReadWithStallDetection(remote, buffer, timeout, cancellation);
                             if (read <= 0)
                             {
                                 break;
@@ -751,11 +764,18 @@ namespace DshInstaller.Shared.Install
         private static int ReadWithStallDetection(
             Stream remote,
             byte[] buffer,
-            CancellationTokenSource cancelOnStall)
+            CancellationTokenSource cancelOnStall,
+            Func<bool> cancellation)
         {
-            Task<int> readTask = remote.ReadAsync(buffer, 0, buffer.Length);
-
-            if (!readTask.Wait(StallTimeoutMs))
+            Task<int> readTask = remote.ReadAsync(buffer, 0, buffer.Length, cancelOnStall.Token);
+            bool completed;
+            try { completed = readTask.Wait(StallTimeoutMs); }
+            catch (AggregateException aggregate)
+            {
+                if (cancellation != null && cancellation()) throw new OperationCanceledException();
+                throw aggregate.InnerException ?? aggregate;
+            }
+            if (!completed)
             {
                 // 把底层连接掐掉,让那个还挂着的 ReadAsync 尽快结束
                 try
@@ -777,6 +797,7 @@ namespace DshInstaller.Shared.Install
             }
             catch (AggregateException aggregate)
             {
+                if (cancellation != null && cancellation()) throw new OperationCanceledException();
                 Exception inner = aggregate.InnerException;
                 if (inner != null)
                 {
@@ -791,7 +812,8 @@ namespace DshInstaller.Shared.Install
         /// 下载文本(拿版本清单、校验和之类)。
         /// 同样换源重试 —— 清单地址在国内比资产更容易被打掉。
         /// </summary>
-        public static string DownloadText(IList<string> urls, int timeoutMs = 20000)
+        public static string DownloadText(IList<string> urls, int timeoutMs = 20000,
+            Action<DownloadProgress> progress = null, Func<bool> cancellation = null)
         {
             if (urls == null || urls.Count == 0)
             {
@@ -800,12 +822,17 @@ namespace DshInstaller.Shared.Install
 
             List<string> failures = new List<string>();
 
-            for (int attempt = 1; attempt <= Math.Min(MaxAttempts, urls.Count * 2); attempt++)
+            var resolvedUrls = BackendDownloadSource.Candidates(urls);
+            for (int attempt = 1; attempt <= Math.Min(MaxAttempts, resolvedUrls.Count * 2); attempt++)
             {
-                string url = urls[(attempt - 1) % urls.Count];
+                string url = resolvedUrls[(attempt - 1) % resolvedUrls.Count];
+                if (BackendDownloadSource.IsBackendUrl(url)) url = url.Replace("/api/download?", "/api/fetch?");
+                if (cancellation != null && cancellation()) throw new OperationCanceledException();
+                progress?.Invoke(new DownloadProgress { TotalBytes = -1, SourceLabel = MirrorSource.DescribeSource(resolvedUrls, url) });
                 try
                 {
-                    using (CancellationTokenSource timeout = new CancellationTokenSource(timeoutMs))
+                    using (CancellationTokenSource timeout = new CancellationTokenSource(Math.Min(timeoutMs, ResponseTimeoutMs)))
+                    using (Timer monitor = new Timer(_ => { if (cancellation != null && cancellation()) timeout.Cancel(); }, null, 0, 100))
                     using (HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Get, url))
                     using (HttpResponseMessage response = Client.Send(
                         request, HttpCompletionOption.ResponseContentRead, timeout.Token))
@@ -827,6 +854,7 @@ namespace DshInstaller.Shared.Install
                 }
                 catch (Exception exception)
                 {
+                    if (cancellation != null && cancellation()) throw new OperationCanceledException();
                     failures.Add("[" + attempt + "] " + url + " : " + exception.Message);
                 }
             }

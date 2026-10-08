@@ -143,7 +143,11 @@ namespace DshInstaller.Shared.Install
             {
                 report.Succeeded = true;
                 int skipped = report.CountOf(InstallStepState.Skipped);
-                if (skipped > 0)
+                if (_context.Warnings.Count > 0)
+                {
+                    _context.Log("结算:全部必需步骤完成," + _context.Warnings.Count + " 项警告");
+                }
+                else if (skipped > 0)
                 {
                     _context.Log("结算:全部必需步骤完成," + skipped + " 个可选步骤跳过");
                 }
@@ -153,6 +157,7 @@ namespace DshInstaller.Shared.Install
                 }
             }
 
+            report.Warnings = new List<string>(_context.Warnings);
             _context.Log(report.Succeeded ? "安装流程结束:成功" : "安装流程结束:未成功");
             return report;
         }
@@ -219,6 +224,7 @@ namespace DshInstaller.Shared.Install
         /// <summary>跑一步,并把结果写回 report。</summary>
         private async Task<InstallStepState> RunStepAsync(int i, InstallReport report, int? recoveryRound)
         {
+            var stepClock = System.Diagnostics.Stopwatch.StartNew();
             InstallStep step = _steps[i];
             InstallStepResult result = report.Steps[i];
 
@@ -273,6 +279,7 @@ namespace DshInstaller.Shared.Install
                 report.Cancelled = true;
                 StepStateChanged(i, result.State, result.Message);
                 _context.Log("已取消:" + step.Title);
+                _context.Log("步骤耗时:" + step.Title + " · " + stepClock.Elapsed.TotalSeconds.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + " 秒");
                 return result.State;
             }
             catch (Exception exception)
@@ -293,6 +300,7 @@ namespace DshInstaller.Shared.Install
                     + (string.IsNullOrEmpty(result.Message) ? string.Empty : "(" + result.Message + ")"));
             }
 
+            _context.Log("步骤耗时:" + step.Title + " · " + stepClock.Elapsed.TotalSeconds.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + " 秒");
             return result.State;
         }
 

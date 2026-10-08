@@ -182,7 +182,7 @@ namespace DshInstaller.Shared.Install
                     delegate(DownloadProgress progress)
                     {
                         context.Report(DescribeDownload(progress),
-                            fromPercent + progress.Fraction * (toPercent - fromPercent));
+                            DownloadPercent(progress, fromPercent, toPercent));
                     },
                     delegate { return token.IsCancellationRequested; },
                     delegate(string failedUrl)
@@ -277,14 +277,21 @@ namespace DshInstaller.Shared.Install
                 // 上一次中断很可能只留下半个 node 目录(解压没完就断了),
                 // 那时候这里一"跳过",后面就报"未找到 npm(Node 步骤应已先完成)",
                 // 而日志上 Node 那步还显示成功,极难查(实测踩过)。
-                if (File.Exists(Path.Combine(nodeDir, "npm.cmd")))
+                bool bundleNodeCompatible = true;
+                if (BackendDownloadSource.IsSelected(o.SourcePreference) && !o.DryRun)
+                {
+                    var existingNode = ProcessRunner.Run(nodeExe, "--version", null, 15000, cancellationToken: token);
+                    bundleNodeCompatible = existingNode.Ok && existingNode.StandardOutput.Trim().StartsWith("v22.", StringComparison.Ordinal);
+                    if (!bundleNodeCompatible) context.Log("完整 DSH 本地包需要 Node 22，正在替换组件目录中的不兼容版本。");
+                }
+                if (File.Exists(Path.Combine(nodeDir, "npm.cmd")) && bundleNodeCompatible)
                 {
                     context.Report(SharedText.T("已存在,跳过", "Already present, skipping"), 100);
                     context.Log("Node 已存在于 " + nodeExe + " ,跳过下载");
                     return;
                 }
 
-                context.Log("node.exe 在,但缺 npm.cmd,重新解压一份完整的");
+                if (!File.Exists(Path.Combine(nodeDir, "npm.cmd"))) context.Log("node.exe 在,但缺 npm.cmd,重新解压一份完整的");
             }
 
             // 本机这份够新就直接用 —— 30 MB 的下载可以省掉,也不用再占一份磁盘。
@@ -307,8 +314,11 @@ namespace DshInstaller.Shared.Install
             {
                 try
                 {
-                    return MirrorSource.ResolveLatestNodeVersion(o.SourcePreference, WellKnown.PreferredNodeMajor);
+                    return MirrorSource.ResolveLatestNodeVersion(o.SourcePreference, WellKnown.PreferredNodeMajor,
+                        p => context.Report(SharedText.T("正在读取版本清单", "Reading version metadata") + " · " + p.SourceLabel),
+                        () => token.IsCancellationRequested);
                 }
+                catch (OperationCanceledException) { throw; }
                 catch
                 {
                     return null;
@@ -337,7 +347,7 @@ namespace DshInstaller.Shared.Install
                     {
                         context.Report(
                             DescribeDownload(progress),
-                            5 + progress.Fraction * 65);
+                            DownloadPercent(progress, 5, 70));
                     },
                     delegate { return token.IsCancellationRequested; },
                     delegate(string failedUrl)
@@ -380,12 +390,10 @@ namespace DshInstaller.Shared.Install
                 context.NoteCreatedDirectory(o.ComponentsRoot);
             }
 
-            if (Directory.Exists(nodeDir))
-            {
-                Directory.Delete(nodeDir, true);
-            }
-
-            Directory.Move(inner, nodeDir);
+            if (!File.Exists(Path.Combine(inner, "node.exe")) || !File.Exists(Path.Combine(inner, "npm.cmd")))
+                throw new InvalidDataException("Node 归档缺少 node.exe 或 npm.cmd。");
+            if (Directory.Exists(nodeDir)) Directory.Delete(nodeDir, true);
+            PortableDirectoryDeployment.MoveToTarget(inner, nodeDir, token);
             TryDelete(extractRoot);
             TryDelete(archive);
 
@@ -419,6 +427,7 @@ namespace DshInstaller.Shared.Install
 
             if (o.UseExistingDsh && File.Exists(marker))
             {
+                LogExistingDshVersion(context, o.DshRoot);
                 context.Report(SharedText.T("使用现有安装,跳过下载", "Using the existing installation"), 100);
                 context.Log("本机已有 DSH,跳过安装:" + o.DshRoot);
                 return;
@@ -426,6 +435,7 @@ namespace DshInstaller.Shared.Install
 
             if (File.Exists(marker))
             {
+                LogExistingDshVersion(context, o.DshRoot);
                 context.Report(SharedText.T("已安装,跳过", "Already installed, skipping"), 100);
                 context.Log("DSH 本体已存在:" + marker);
                 return;
@@ -434,6 +444,18 @@ namespace DshInstaller.Shared.Install
             if (o.DryRun)
             {
                 context.Report(SharedText.T("演练模式,不实际安装", "Dry run, not installing"), 100);
+                return;
+            }
+
+            string requestedVersion = string.IsNullOrWhiteSpace(o.DshVersion) ? WellKnown.DshPackageVersion : SanitizeVersionSpec(o.DshVersion);
+            if (string.IsNullOrWhiteSpace(requestedVersion)) throw new InvalidOperationException("DSH 版本说明包含不支持的字符。");
+            if (BackendDownloadSource.IsSelected(o.SourcePreference))
+            {
+                string exact = await Task.Run(() => DshVersionResolver.Resolve(requestedVersion,
+                    p => context.Report("正在解析 DSH " + requestedVersion + " 版本 · " + p.SourceLabel),
+                    () => token.IsCancellationRequested), token).ConfigureAwait(false);
+                context.Log("DSH 版本选择 " + requestedVersion + " → " + exact);
+                await DshOfflineBundle.InstallAsync(context, exact, ResolveNodeDirectory(o), token).ConfigureAwait(false);
                 return;
             }
 
@@ -458,19 +480,13 @@ namespace DshInstaller.Shared.Install
             // 版本页选了就按它装,没选就用默认那个范围。
             // 版本说明来自界面输入,拼进命令行之前先筛一遍字符 —— 它最终会进一个 .cmd,
             // 不筛的话输入里带个引号或 & 就能往命令行里塞东西。
-            string dshSpec = WellKnown.DshPackageVersion;
-            if (!string.IsNullOrWhiteSpace(o.DshVersion))
+            string dshSpec = requestedVersion;
+            if (DshVersionResolver.IsExact(requestedVersion) || System.Text.RegularExpressions.Regex.IsMatch(requestedVersion, @"^[A-Za-z][A-Za-z0-9._-]*$"))
             {
-                string requested = SanitizeVersionSpec(o.DshVersion);
-                if (string.IsNullOrWhiteSpace(requested))
-                {
-                    throw new InvalidOperationException(
-                        SharedText.T(
-                            "版本号里有不认识的字符，只支持字母、数字和 . - _ ^ ~ > < = * + ：" + o.DshVersion,
-                            "The version contains unsupported characters. Only letters, digits and . - _ ^ ~ > < = * + are allowed: " + o.DshVersion));
-                }
-
-                dshSpec = requested;
+                dshSpec = await Task.Run(() => DshVersionResolver.Resolve(requestedVersion,
+                    p => context.Report("正在解析 DSH " + requestedVersion + " 版本 · " + p.SourceLabel),
+                    () => token.IsCancellationRequested), token).ConfigureAwait(false);
+                context.Log("DSH 版本选择 " + requestedVersion + " → " + dshSpec);
             }
 
             // 包名必须整体加引号:版本范围里的 ^ 在 cmd.exe 里是转义字符,
@@ -479,7 +495,7 @@ namespace DshInstaller.Shared.Install
                 "install \"" + WellKnown.DshPackage + "@" + dshSpec + "\""
                 + " --prefix \"" + o.DshRoot + "\""
                 + " --registry " + registry
-                + " --no-audit --no-fund --loglevel=error";
+                + " --no-audit --no-fund --loglevel=http";
 
             context.Log("npm " + arguments);
             context.Log("node 目录:" + ResolveNodeDirectory(o));
@@ -578,9 +594,13 @@ namespace DshInstaller.Shared.Install
                                 if (!string.IsNullOrWhiteSpace(line))
                                 {
                                     context.Log("  " + line.Trim());
+                                    if (line.Contains("npm http fetch", StringComparison.Ordinal))
+                                        context.Report("正在获取依赖 · " + line.Trim().Replace("npm http fetch ", ""));
                                 }
                             },
-                            nodeDir);
+                            nodeDir,
+                            PackageDownloadEnvironment.Create(o.SourcePreference),
+                            token);
                     }, token).ConfigureAwait(false);
                 }
                 finally
@@ -664,7 +684,9 @@ namespace DshInstaller.Shared.Install
                         LauncherRelease candidate = LauncherFeed.Fetch(
                             repositories[index],
                             o.SourcePreference,
-                            WellKnown.LauncherBranch);
+                            WellKnown.LauncherBranch,
+                            p => context.Report(SharedText.T("正在读取版本清单", "Reading version metadata") + " · " + p.SourceLabel),
+                            () => token.IsCancellationRequested);
                         if (candidate != null
                             && candidate.Urls != null
                             && candidate.Urls.Count > 0)
@@ -678,6 +700,7 @@ namespace DshInstaller.Shared.Install
                             return candidate;
                         }
                     }
+                    catch (OperationCanceledException) { throw; }
                     catch (Exception exception)
                     {
                         context.Log("清单拉取失败(" + repositories[index] + "):"
@@ -726,6 +749,7 @@ namespace DshInstaller.Shared.Install
             // 扩展名故意写成 .bin:候选里既有 npm 的 .tgz 也有 GitHub 的 .zip,
             // 到底拿到哪种得看内容(下面 MaterializeLauncherArchive),不能靠后缀猜。
             string downloaded = Path.Combine(o.TempRoot, "launcher-" + release.Version + ".bin");
+            string archive = null;
             context.Report(SharedText.T("准备中 · 下载启动器 " + release.Version, "Preparing · downloading the launcher " + release.Version), 10);
 
             await Task.Run(delegate
@@ -737,7 +761,7 @@ namespace DshInstaller.Shared.Install
                     {
                         context.Report(
                             DescribeDownload(progress),
-                            10 + progress.Fraction * 65);
+                            DownloadPercent(progress, 10, 75));
                     },
                     delegate { return token.IsCancellationRequested; },
                     delegate(string failedUrl)
@@ -749,6 +773,23 @@ namespace DshInstaller.Shared.Install
                     {
                         // 换源重试要让用户看见,否则他会以为卡住了
                         context.Report(SharedText.T("下载中 · ", "Downloading · ") + notice);
+                    },
+                    validateCompleted: path =>
+                    {
+                        token.ThrowIfCancellationRequested();
+                        string candidate = MaterializeLauncherArchive(context, path, release.Version);
+                        if (!string.IsNullOrEmpty(release.Sha256))
+                        {
+                            string actual = HashFile(candidate);
+                            if (!string.Equals(actual, release.Sha256, StringComparison.OrdinalIgnoreCase))
+                            {
+                                TryDelete(candidate);
+                                throw new InvalidDataException(SharedText.T("启动器包校验失败，切换下载源", "Launcher checksum mismatch; switching source")
+                                    + ": " + actual + " != " + release.Sha256);
+                            }
+                            context.Log("校验通过:" + actual.Substring(0, 16) + "…");
+                        }
+                        archive = candidate;
                     });
             }, token).ConfigureAwait(false);
 
@@ -756,20 +797,7 @@ namespace DshInstaller.Shared.Install
 
             // 拿到的是 npm 的 tgz 还是 GitHub 的 zip?按内容判断,不靠 URL 猜 ——
             // 引擎在候选之间轮换,轮到哪里都可能。
-            string archive = MaterializeLauncherArchive(context, downloaded, release.Version);
-
-            if (!string.IsNullOrEmpty(release.Sha256))
-            {
-                string actual = HashFile(archive);
-                if (!string.Equals(actual, release.Sha256, StringComparison.OrdinalIgnoreCase))
-                {
-                    throw new InvalidOperationException(
-                        SharedText.T("启动器包校验失败", "Launcher package checksum mismatch")
-                        + ": " + actual + " != " + release.Sha256);
-                }
-
-                context.Log("校验通过:" + actual.Substring(0, 16) + "…");
-            }
+            if (archive == null) throw new InvalidDataException("未取得已校验的启动器归档。");
 
             context.Report(SharedText.T("安装中 · 正在解压", "Installing · extracting"), 80);
 
@@ -886,7 +914,7 @@ namespace DshInstaller.Shared.Install
                     {
                         context.Report(
                             DescribeDownload(progress),
-                            5 + progress.Fraction * 75);
+                            DownloadPercent(progress, 5, 80));
                     },
                     delegate { return token.IsCancellationRequested; },
                     null,
@@ -978,7 +1006,7 @@ namespace DshInstaller.Shared.Install
                     {
                         context.Report(
                             DescribeDownload(progress),
-                            10 + progress.Fraction * 85);
+                            DownloadPercent(progress, 10, 95));
                     },
                     delegate { return token.IsCancellationRequested; },
                     null,
@@ -1202,7 +1230,7 @@ namespace DshInstaller.Shared.Install
                     {
                         context.Report(
                             DescribeDownload(progress),
-                            5 + progress.Fraction * 75);
+                            DownloadPercent(progress, 5, 80));
                     },
                     delegate { return token.IsCancellationRequested; },
                     null,
@@ -1374,6 +1402,7 @@ namespace DshInstaller.Shared.Install
                             key.SetValue("LauncherRoot", o.LauncherRoot ?? string.Empty);
                             key.SetValue("ComponentsRoot", o.ComponentsRoot ?? string.Empty);
                             key.SetValue("InstallerHome", home ?? string.Empty);
+                            key.SetValue("SourcePreference", ConfigStore.NormalizeSourcePreference(o.SourcePreference) ?? MirrorSource.China);
 
                             if (context.AddedPathEntries != null && context.AddedPathEntries.Count > 0)
                             {
@@ -1873,6 +1902,8 @@ namespace DshInstaller.Shared.Install
             // 它是装完之后扫描实际落地的文件生成的,**不是**构建期常量 ——
             // 所以升级、修复、启动器自更新之后重新生成一份即可,
             // 不会出现"版本一变就报文件被改坏"的误报(见 InstallManifest 的注释)。
+            if (o.InstallLauncher && !ConfigStore.SaveLauncherDefaults(o.LauncherRoot, o.DshRoot, o.SourcePreference))
+                context.Log("未能保存启动器默认下载源。");
             InstallManifest.Write(o, WellKnown.InstallerVersion, context.Log);
 
             // 记下这次装到了哪里。卸载器完全依赖这份状态才知道该删什么 ——
@@ -1893,6 +1924,7 @@ namespace DshInstaller.Shared.Install
                 state.InstallPython = o.InstallPython;
                 state.InstalledAt = DateTime.Now.ToString("o");
                 state.InstallerVersion = WellKnown.InstallerVersion;
+                state.SourcePreference = ConfigStore.NormalizeSourcePreference(o.SourcePreference) ?? MirrorSource.China;
 
                 // PATH 那一步如果失败或没跑,这里兜个底,免得卸载时漏清
                 if (context.AddedPathEntries.Count > 0)
@@ -2275,7 +2307,8 @@ namespace DshInstaller.Shared.Install
                                     context.Report(detail, percent);
                                 },
                                 context.Log,
-                                token);
+                                token,
+                                context.Warn);
                         }
                         catch (OperationCanceledException)
                         {
@@ -2298,6 +2331,7 @@ namespace DshInstaller.Shared.Install
                             context.Log(
                                 "推荐插件安装失败，已跳过："
                                 + exception.Message);
+                            context.Warn("推荐插件未完成：" + exception.Message);
                             context.Report(
                                 SharedText.T(
                                     "推荐插件失败，已跳过",
@@ -2316,10 +2350,11 @@ namespace DshInstaller.Shared.Install
         private static string DescribeDownload(DownloadProgress progress)
         {
             string speed = string.IsNullOrEmpty(progress.SpeedText) ? "--" : progress.SpeedText;
-            string line = SharedText.T("下载中", "Downloading")
+            string line = progress.IsCachePreparing ? SharedText.T("缓存中", "Caching") : SharedText.T("下载中", "Downloading");
+            line = line
                 + " · " + speed
                 + " · " + DownloadProgress.FormatBytes(progress.ReceivedBytes)
-                + " / " + DownloadProgress.FormatBytes(progress.TotalBytes);
+                + (progress.TotalBytes > 0 ? " / " + DownloadProgress.FormatBytes(progress.TotalBytes) : "");
 
             if (!string.IsNullOrEmpty(progress.SourceLabel))
             {
@@ -2328,6 +2363,17 @@ namespace DshInstaller.Shared.Install
 
             return line;
         }
+        private static void LogExistingDshVersion(InstallContext context, string root)
+        {
+            try
+            {
+                using var package = System.Text.Json.JsonDocument.Parse(File.ReadAllText(Path.Combine(root, "node_modules", "@deepseek-ai", "dsh", "package.json")));
+                context.Log("保留现有 DSH 版本：" + package.RootElement.GetProperty("version").GetString());
+            }
+            catch (Exception exception) { context.Log("现有 DSH 版本读取失败：" + exception.Message); }
+        }
+        private static double DownloadPercent(DownloadProgress progress, double from, double to)
+            => progress.IsCachePreparing || progress.Fraction < 0 ? -1 : from + progress.Fraction * (to - from);
         /// <summary>DSH 本体装完大约这个体积(MB),用来把 npm 的体积增长折算成百分比。</summary>
         private const double ExpectedDshSizeMb = 230;
 

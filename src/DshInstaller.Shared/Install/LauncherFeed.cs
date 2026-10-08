@@ -129,9 +129,12 @@ namespace DshInstaller.Shared.Install
         /// }
         /// 也兼容只写 version + url 的简版。
         /// </summary>
-        public static LauncherRelease Fetch(string repository, string preference, string branch = "main")
+        public static LauncherRelease Fetch(string repository, string preference, string branch = "main",
+            Action<DownloadProgress> progress = null, Func<bool> cancellation = null)
         {
             List<string> urls = ManifestUrls(repository, branch);
+            if (BackendDownloadSource.IsSelected(preference))
+                urls = MirrorSource.BackendUrls("https://raw.githubusercontent.com/" + repository.Trim().Trim('/') + "/" + branch + "/manifest.json", preference);
             if (urls.Count == 0)
             {
                 return null;
@@ -143,7 +146,7 @@ namespace DshInstaller.Shared.Install
                 urls.Reverse();
             }
 
-            string json = DownloadEngine.DownloadText(urls, 20000);
+            string json = DownloadEngine.DownloadText(urls, 20000, progress, cancellation);
             if (!string.IsNullOrWhiteSpace(json))
             {
                 LauncherRelease fromManifest = Parse(json, preference);
@@ -158,7 +161,7 @@ namespace DshInstaller.Shared.Install
             InstallLogger.Write("启动器清单拉取失败,改试 GitHub API: " + repository);
 
             List<string> apiUrls = ApiUrls(repository);
-            string apiJson = DownloadEngine.DownloadText(apiUrls, 20000);
+            string apiJson = DownloadEngine.DownloadText(apiUrls, 20000, progress, cancellation);
             if (!string.IsNullOrWhiteSpace(apiJson))
             {
                 LauncherRelease fromApi = ParseGitHubRelease(apiJson, preference);

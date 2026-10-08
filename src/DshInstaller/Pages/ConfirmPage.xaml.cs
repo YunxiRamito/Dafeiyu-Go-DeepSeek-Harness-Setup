@@ -127,9 +127,11 @@ namespace DshInstaller.Pages
 
             Add(Localization.IsChinese ? "组件目录" : "Component directory", options.ComponentsRoot);
             Add(Localization.IsChinese ? "下载源" : "Download source",
-                session.SourcePreference == MirrorSource.China
-                    ? (Localization.IsChinese ? "国内镜像" : "China mirror")
-                    : (Localization.IsChinese ? "官方源" : "Official source"));
+                BackendDownloadSource.IsSelected(session.SourcePreference)
+                    ? (Localization.IsChinese ? "大肥鱼国内加速（推荐）" : "Dafeiyu mainland acceleration (recommended)")
+                    : session.SourcePreference == MirrorSource.China
+                        ? (Localization.IsChinese ? "大陆CDN下载（推荐）" : "Mainland CDN (recommended)")
+                        : (Localization.IsChinese ? "官方下载" : "Official sources"));
 
             Add(Localization.T("preview.system"), Localization.T("preview.changes"));
             Add(Localization.T("preview.data"), Localization.T("preview.keep"));

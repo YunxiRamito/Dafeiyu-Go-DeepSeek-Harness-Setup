@@ -121,7 +121,7 @@ namespace DshInstaller.Pages
             // 把外部命令的执行也送进日志抽屉 —— "执行了什么"用户看得见才放心
             ProcessRunner.CommandObserver = delegate(string command)
             {
-                AppendLog(Localization.T("log.exec") + " " + command);
+                AppendLog(Localization.T("log.exec") + " " + command, false);
             };
             _runner.StepStateChanged += OnStepStateChanged;
             _runner.StepDetail += OnStepDetailEvent;
@@ -598,6 +598,9 @@ namespace DshInstaller.Pages
                 DshRoot = createdDsh ? _options.DshRoot : null,
                 LauncherRoot = createdLauncher ? _options.LauncherRoot : null,
                 ComponentsRoot = createdComponents ? _options.ComponentsRoot : null,
+                RemoveDshCore = createdDsh,
+                RemoveLauncher = createdLauncher,
+                RemoveComponents = createdComponents,
                 AllUsers = _options.AllUsers,
                 CleanPath = true,
                 PathEntries = context.AddedPathEntries,
@@ -750,7 +753,9 @@ namespace DshInstaller.Pages
             });
         }
 
-        private void AppendLog(string message)
+        private void AppendLog(string message) => AppendLog(message, true);
+
+        private void AppendLog(string message, bool persist)
         {
             if (string.IsNullOrEmpty(message))
             {
@@ -760,7 +765,7 @@ namespace DshInstaller.Pages
             // 同时落一份到文件。界面上的日志抽屉关了窗口就没了,
             // 出问题时要能事后查(尤其无人值守模式)。
             // 演练模式不落盘 —— 开发时在本机翻页预览不该留任何东西。
-            if (!DevOptions.DryRun)
+            if (persist && !DevOptions.DryRun)
             {
                 try
                 {

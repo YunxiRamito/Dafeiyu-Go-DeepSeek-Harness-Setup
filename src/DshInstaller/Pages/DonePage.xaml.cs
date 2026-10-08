@@ -164,6 +164,8 @@ namespace DshInstaller.Pages
             Shared.Install.InstallReport result = session.Result;
 
             SummaryHost.Children.Clear();
+            PartialHost.Children.Clear();
+            PartialBox.Visibility = Visibility.Collapsed;
 
             // 完成页只说"完成"和"未完全完成"两种 —— 真正失败/取消的走失败页(红叉)。
             bool ok = result == null || result.Succeeded;
@@ -185,6 +187,11 @@ namespace DshInstaller.Pages
                 }
             }
 
+            if (result != null && result.Warnings != null)
+            {
+                foreach (string warning in result.Warnings)
+                    optionalFailed.Add(new Shared.Install.InstallStepResult { Title = warning });
+            }
             if (ok && optionalFailed.Count > 0)
             {
                 // 黄色感叹号。用固定的注意色,深色模式下也认得出来。

@@ -1,6 +1,9 @@
 using System;
 using System.IO;
 using System.IO.Compression;
+using System.Formats.Tar;
+using System.Collections.Generic;
+using System.Threading;
 
 namespace DshInstaller.Shared.Install
 {
@@ -26,7 +29,7 @@ namespace DshInstaller.Shared.Install
     }
     public static class ArchiveExtractor
     {
-        public static void Extract(string archivePath, string destination)
+        public static void Extract(string archivePath, string destination, CancellationToken cancellation = default)
         {
             if (!Directory.Exists(destination))
             {
@@ -48,7 +51,7 @@ namespace DshInstaller.Shared.Install
 
             if (extension == ".gz" || archivePath.EndsWith(".tar.gz", StringComparison.OrdinalIgnoreCase))
             {
-                ExtractWithTar(archivePath, destination);
+                ExtractTarGzip(archivePath, destination, cancellation);
                 return;
             }
 
@@ -66,6 +69,55 @@ namespace DshInstaller.Shared.Install
             {
                 throw new InvalidOperationException("无法识别的压缩格式: " + archivePath, exception);
             }
+        }
+
+        private static void ExtractTarGzip(string archivePath, string destination, CancellationToken cancellation)
+        {
+            string root = Path.GetFullPath(destination).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+            var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            long total = 0;
+            int count = 0;
+            using var source = File.OpenRead(archivePath);
+            using var gzip = new GZipStream(source, CompressionMode.Decompress);
+            using var tar = new TarReader(gzip);
+            TarEntry entry;
+            byte[] buffer = new byte[128 * 1024];
+            while ((entry = tar.GetNextEntry()) != null)
+            {
+                cancellation.ThrowIfCancellationRequested();
+                // GitHub adds a PAX global header for the commit hash. It is
+                // metadata consumed by TarReader, never a filesystem entry.
+                if (entry.EntryType == TarEntryType.GlobalExtendedAttributes) continue;
+                if (++count > 100000) throw new InvalidDataException("归档文件数量超过上限。");
+                string name = entry.Name.Replace('\\', '/');
+                if (name.StartsWith("/", StringComparison.Ordinal) || name.Contains(':')) throw new InvalidDataException("归档路径无效。");
+                var segments = name.Split('/', StringSplitOptions.RemoveEmptyEntries);
+                if (Array.Exists(segments, segment => segment == ".." || segment.EndsWith(' ') || segment.EndsWith('.') && segment != "."
+                    || segment.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)) throw new InvalidDataException("归档路径无效。");
+                string target = Path.GetFullPath(Path.Combine(root, name));
+                if (target.TrimEnd(Path.DirectorySeparatorChar) == root.TrimEnd(Path.DirectorySeparatorChar) && entry.EntryType == TarEntryType.Directory) continue;
+                if (!target.StartsWith(root, StringComparison.OrdinalIgnoreCase) || !names.Add(target.TrimEnd(Path.DirectorySeparatorChar)))
+                    throw new InvalidDataException("归档路径越界或重复。");
+                if (entry.EntryType == TarEntryType.Directory) { Directory.CreateDirectory(target); continue; }
+                if (entry.EntryType is not (TarEntryType.RegularFile or TarEntryType.V7RegularFile))
+                    throw new InvalidDataException("归档包含不支持的链接或特殊文件。");
+                if (entry.Length > 512L * 1024 * 1024 || total + entry.Length > 2L * 1024 * 1024 * 1024)
+                    throw new InvalidDataException("归档解压大小超过上限。");
+                total += entry.Length;
+                Directory.CreateDirectory(Path.GetDirectoryName(target));
+                using var output = new FileStream(target, FileMode.CreateNew, FileAccess.Write, FileShare.None);
+                if (entry.DataStream != null)
+                {
+                    int read;
+                    while ((read = entry.DataStream.Read(buffer, 0, buffer.Length)) > 0)
+                    {
+                        cancellation.ThrowIfCancellationRequested();
+                        output.Write(buffer, 0, read);
+                    }
+                }
+                if (output.Length != entry.Length) throw new InvalidDataException("归档文件长度不一致。");
+            }
+            InstallLogger.Write("解包(tar UTF-8): " + archivePath + " -> " + destination);
         }
 
         /// <summary>

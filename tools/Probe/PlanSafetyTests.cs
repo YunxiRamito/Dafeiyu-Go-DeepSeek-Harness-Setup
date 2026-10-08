@@ -46,6 +46,16 @@ namespace DshInstaller.Probe
             Check(plan.AllUsers, "machine repair scope");
             Check(plan.LauncherRoot == state.LauncherRoot && plan.ComponentsRoot == state.ComponentsRoot, "custom repair paths");
             Check(!plan.CreateStartMenuShortcut && plan.CreateDesktopShortcut && plan.InstallPython && plan.EnableAutostart, "recorded repair choices");
+            foreach (string source in new[] { "china", "backend", "official" })
+            {
+                state.SourcePreference = source;
+                EffectiveInstallPlan.Restore(plan, state);
+                Check(plan.SourcePreference == source, "repair restores effective source " + source);
+            }
+            state.SourcePreference = "unknown";
+            plan.SourcePreference = "china";
+            EffectiveInstallPlan.Restore(plan, state);
+            Check(plan.SourcePreference == "china", "unknown repair source keeps current default");
             state.StartMenuShortcut = null;
             EffectiveInstallPlan.Restore(plan, state);
             Check(plan.CreateStartMenuShortcut, "legacy shortcut fallback");

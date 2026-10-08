@@ -194,9 +194,11 @@ New-VersionInfo -Path $uninstallVersionFile -Title $uninstallTitle -Description 
 # 先编成 Boot.exe 再改名的话,属性里会一直写着 Boot.exe。
 # 后面的步骤会读它的全部字节、再把 payload 追加到同一个文件里(先读后写,没问题)。
 if ($composeSetup) {
+    $bootManifestPath = Join-Path $bootDir 'Boot.manifest'
     & $csc @compilerArgs /target:winexe /out:$bootExe `
+        "/win32manifest:$bootManifestPath" `
         /r:System.IO.Compression.dll /r:System.IO.Compression.FileSystem.dll `
-        /r:System.Windows.Forms.dll /r:System.Drawing.dll `
+        /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:System.Web.Extensions.dll `
         (Join-Path $bootDir 'Boot.cs') $bootVersionFile 2>&1 | ForEach-Object { Write-Host "  $_" }
     if (-not (Test-Path $bootExe)) { throw '引导程序编译失败' }
     if ((Get-Item $bootExe).Length -lt 10240) { throw '引导程序小得不像话,编译多半没成功' }
