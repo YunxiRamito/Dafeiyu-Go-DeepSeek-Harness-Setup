@@ -1,5 +1,12 @@
 # 交接:大肥鱼Go / Dafeiyu-Go
 
+## 2026-10-08 19:40 v1.7.0 安装器已发布（本节优先）
+
+- tag `v1.7.0`（→ `f300901`）CI run `37765095255` 成功，Release：`https://github.com/YunxiRamito/Dafeiyu-Go-DeepSeek-Harness-Setup/releases/tag/v1.7.0`（id `406714406`）。
+- 资产：`DSH-Installer-Setup.exe`，11,441,550 字节，SHA-256 `adbeda9ab28a743b3979401713748452ea4d3a9fc43b8f7f866be68568915666`（CI 构建，与本机 9FDDB426… 的不同属正常）。
+- 更新日志 1.7.0 已改为「已发布」并推送（bc38e8b）；Release 正文写入同一份合并文案。
+- 启动器侧 1.7.0 为本地发布（见父级 HANDOVER）：ZIP 哈希 `736A28A9…`。
+
 ## 2026-10-08 完整 DSH 本地部署与立即 UAC（优先于历史）
 
 - 最终测试包 `dist/test-1.7.0-local-dsh-tray-bans-20261008/DSH-Installer-Setup.exe`，1.7.0.0，11,441,991 字节，SHA-256 `398B4C8B941635CA8DE114B1EBAB133462019532F7482175F8084CCFA08D0F22`。外层 `boot/Boot.manifest` 为 requireAdministrator，最终EXE嵌入资源已验证，双击立即UAC；缺少运行库仍使用现有下载/安装窗口。
