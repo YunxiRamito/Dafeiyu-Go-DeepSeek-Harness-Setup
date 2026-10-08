@@ -25,9 +25,9 @@ internal static class Program
             Candidates();
             CacheStatus();
             ProgressText();
-            CrossVolume();
             HttpFallback();
             WrappedArchiveFallback();
+            CrossVolume();
             Console.WriteLine($"PASS {_checks} installation download repair checks");
             return 0;
         }
@@ -206,7 +206,7 @@ internal static class Program
         server.Bodies["/zip-good"] = valid;
         string expected = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(valid));
         var materialize = typeof(BuiltInSteps).GetMethod("MaterializeLauncherArchive", BindingFlags.Static | BindingFlags.NonPublic)!;
-        var context = new InstallContext(new InstallOptions(), CancellationToken.None);
+        var context = new InstallContext(new InstallOptions { TempRoot = Path.Combine(Root, "temp") }, CancellationToken.None);
         string? verified = null;
         string selected = DownloadEngine.Download(new[] { server.Base + "npm-bad", server.Base + "zip-good" },
             Path.Combine(Root, "wrapped.bin"), null, () => false, allowSegmented: false, validateCompleted: path =>

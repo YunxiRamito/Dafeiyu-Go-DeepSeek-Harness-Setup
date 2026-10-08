@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Text.RegularExpressions;
 using Microsoft.Win32;
 using DshInstaller.Shared.Detection;
@@ -120,19 +121,20 @@ namespace DshInstaller.Shared
             }
         }
 
-        private static IEnumerable<string> FindFromRunningProcess()
+        private static IEnumerable<string> FindFromRunningProcess(bool requireSuccessfulScan = false)
         {
             List<string> roots = new List<string>();
             try
             {
                 // 用 PowerShell 一次问出所有 node 进程的命令行,不引 System.Management
                 string script =
-                    "Get-CimInstance Win32_Process -Filter \"Name='node.exe'\" | " +
-                    "ForEach-Object { $_.ProcessId.ToString() + '|' + $_.CommandLine }";
+                    "$ErrorActionPreference='Stop'; Get-CimInstance Win32_Process -Filter \"Name='node.exe'\" | " +
+                    "ForEach-Object { $_.ProcessId.ToString() + '|' + $_.CommandLine }; Write-Output 'DSH_PROCESS_SCAN_OK'";
 
                 string output = PowerShellScript.Run(script, 12000);
-                if (string.IsNullOrWhiteSpace(output))
+                if (string.IsNullOrWhiteSpace(output) || !output.Contains("DSH_PROCESS_SCAN_OK", StringComparison.Ordinal))
                 {
+                    if (requireSuccessfulScan) throw new IOException("无法确认 DSH 服务是否已停止，请停止目标服务后重试。");
                     return roots;
                 }
 
@@ -177,9 +179,19 @@ namespace DshInstaller.Shared
             }
             catch
             {
+                if (requireSuccessfulScan) throw;
             }
 
             return roots;
+        }
+
+        public static bool IsRootRunning(string dshRoot)
+        {
+            if (String.IsNullOrWhiteSpace(dshRoot)) return false;
+            string root = Path.GetFullPath(dshRoot).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            return FindFromRunningProcess(true).Any(candidate => String.Equals(
+                Path.GetFullPath(candidate).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
+                root, StringComparison.OrdinalIgnoreCase));
         }
 
         private static IEnumerable<string> FindFromRunKey()

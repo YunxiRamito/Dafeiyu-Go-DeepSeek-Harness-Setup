@@ -213,7 +213,7 @@ namespace DshInstaller
             {
                 Type = typeof(Pages.ImportPage),
                 ShowBack = false,
-                NextText = "结束",
+                NextText = "下一步",
             };
             _pages[WizardPage.Done] = new PageInfo
             {

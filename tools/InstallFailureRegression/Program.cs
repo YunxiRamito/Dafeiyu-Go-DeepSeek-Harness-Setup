@@ -33,7 +33,7 @@ try
     Directory.CreateDirectory(components);
     File.WriteAllText(Path.Combine(components, "fixture.txt"), "fixture-component");
     var install = new InstallOptions { DshRoot = Path.Combine(root, "dsh"), LauncherRoot = Path.Combine(root, "launcher"), ComponentsRoot = components,
-        InstallDsh = false, InstallLauncher = false, SourcePreference = "backend" };
+        TempRoot = Path.Combine(root, "temp"), InstallDsh = false, InstallLauncher = false, SourcePreference = "backend" };
     int recorded = InstallManifest.Write(install, "1.7.0", _ => { });
     Check(recorded == 1, "production install manifest writes typed numbers without resolver error");
     var manifest = JsonNode.Parse(File.ReadAllText(InstallManifest.ResolvePath(install)))!;

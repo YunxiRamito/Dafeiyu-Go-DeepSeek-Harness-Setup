@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Threading;
 
 namespace DshInstaller.Shared.Backup
@@ -20,6 +21,8 @@ namespace DshInstaller.Shared.Backup
 
         /// <summary>压缩包里的相对前缀(导入时按它认组)。</summary>
         public string ArchivePrefix { get; set; }
+
+        public string[] ArchivePrefixes { get; set; }
 
         /// <summary>默认勾不勾。</summary>
         public bool SelectedByDefault { get; set; }
@@ -84,6 +87,7 @@ namespace DshInstaller.Shared.Backup
             public string NameEn;
             public string RelativePath;
             public string ArchivePrefix;
+            public string[] AdditionalPrefixes;
             public bool ByDefault;
         }
 
@@ -105,6 +109,7 @@ namespace DshInstaller.Shared.Backup
                 NameEn = "Skills",
                 RelativePath = "skills",
                 ArchivePrefix = "skills",
+                AdditionalPrefixes = new[] { ".dsh/skills" },
                 ByDefault = true,
             },
             new GroupTemplate
@@ -114,6 +119,7 @@ namespace DshInstaller.Shared.Backup
                 NameEn = "Plug-in files",
                 RelativePath = "plugins",
                 ArchivePrefix = "plugins",
+                AdditionalPrefixes = new[] { ".dsh/plugins" },
                 ByDefault = true,
             },
             new GroupTemplate
@@ -123,6 +129,7 @@ namespace DshInstaller.Shared.Backup
                 NameEn = "Sessions and cache",
                 RelativePath = @".dsh\storages",
                 ArchivePrefix = ".dsh/storages",
+                AdditionalPrefixes = new[] { ".dsh/sessions" },
                 ByDefault = false,
             },
         };
@@ -139,9 +146,8 @@ namespace DshInstaller.Shared.Backup
             for (int index = 0; index < Templates.Length; index++)
             {
                 GroupTemplate template = Templates[index];
-                string path = Path.Combine(
-                    dshRoot,
-                    template.RelativePath.Replace('\\', Path.DirectorySeparatorChar));
+                string path = Prefixes(template).Select(prefix => Path.Combine(dshRoot, prefix.Replace('/', Path.DirectorySeparatorChar)))
+                    .FirstOrDefault(Directory.Exists);
 
                 bool exists = false;
                 try
@@ -195,7 +201,8 @@ namespace DshInstaller.Shared.Backup
                         continue;
                     }
 
-                    if (path.StartsWith(template.ArchivePrefix, StringComparison.OrdinalIgnoreCase))
+                    if (Prefixes(template).Any(prefix => String.Equals(path, prefix, StringComparison.OrdinalIgnoreCase)
+                        || path.StartsWith(prefix + "/", StringComparison.OrdinalIgnoreCase)))
                     {
                         found = true;
                         break;
@@ -220,6 +227,7 @@ namespace DshInstaller.Shared.Backup
                 NameEn = template.NameEn,
                 SourcePath = sourcePath,
                 ArchivePrefix = template.ArchivePrefix,
+                ArchivePrefixes = Prefixes(template).ToArray(),
                 SelectedByDefault = template.ByDefault,
                 Exists = true
             };
@@ -256,7 +264,8 @@ namespace DshInstaller.Shared.Backup
                     continue;
                 }
 
-                relativePaths.Add(group.ArchivePrefix);
+                foreach (string prefix in group.ArchivePrefixes ?? new[] { group.ArchivePrefix })
+                    if (Directory.Exists(Path.Combine(dshRoot, prefix.Replace('/', Path.DirectorySeparatorChar)))) relativePaths.Add(prefix);
             }
 
             if (relativePaths.Count == 0)
@@ -408,9 +417,9 @@ namespace DshInstaller.Shared.Backup
             for (int index = 0; index < groups.Count; index++)
             {
                 BackupGroup group = groups[index];
-                string sourceRoot = Path.Combine(
-                    staging,
-                    group.ArchivePrefix.Replace('/', Path.DirectorySeparatorChar));
+                foreach (string prefix in group.ArchivePrefixes ?? new[] { group.ArchivePrefix })
+                {
+                string sourceRoot = Path.Combine(staging, prefix.Replace('/', Path.DirectorySeparatorChar));
                 if (!Directory.Exists(sourceRoot))
                 {
                     continue;
@@ -425,10 +434,12 @@ namespace DshInstaller.Shared.Backup
                     items.Add(new RestoreItem
                     {
                         Group = group,
+                        Prefix = prefix,
                         SourceFile = files[fileIndex],
                         SourceRoot = sourceRoot,
                         Relative = Path.GetRelativePath(sourceRoot, files[fileIndex])
                     });
+                }
                 }
             }
 
@@ -452,7 +463,7 @@ namespace DshInstaller.Shared.Backup
                 RestoreItem item = items[index];
                 string targetDirectory = Path.Combine(
                     dshRoot,
-                    item.Group.ArchivePrefix.Replace('/', Path.DirectorySeparatorChar));
+                    item.Prefix.Replace('/', Path.DirectorySeparatorChar));
                 string target = Path.Combine(targetDirectory, item.Relative);
 
                 if (report != null)
@@ -553,6 +564,7 @@ namespace DshInstaller.Shared.Backup
         private sealed class RestoreItem
         {
             public BackupGroup Group;
+            public string Prefix;
 
             public string SourceFile;
 
@@ -560,5 +572,8 @@ namespace DshInstaller.Shared.Backup
 
             public string Relative;
         }
+
+        private static IEnumerable<string> Prefixes(GroupTemplate template)
+            => new[] { template.ArchivePrefix }.Concat(template.AdditionalPrefixes ?? Array.Empty<string>());
     }
 }
