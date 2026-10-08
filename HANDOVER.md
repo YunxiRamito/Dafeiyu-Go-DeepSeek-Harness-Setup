@@ -1,5 +1,11 @@
 # 交接:大肥鱼Go / Dafeiyu-Go
 
+## 2026-10-09 00:10 v1.7.1 已发布（本节优先）
+
+- Release：`https://github.com/YunxiRamito/Dafeiyu-Go-DeepSeek-Harness-Setup/releases/tag/v1.7.1`（id `407026440`，tag v1.7.1 → `2cc0c0d`）。
+- 资产：`DSH-Installer-Setup.exe`（用户提供的 `DSH-Installer-Setup-1.7.1.exe` 按更新检查期望的文件名上传），11,486,851 字节，SHA-256 `F6434A95459F0FFBBB6F4C9F7FE6B724E8805012E6EE9C12AA0E49D53723FAA2`。
+- tag CI run `37806535655` 已取消，避免 CI 产物覆盖 Release 资产。
+
 ## 2026-10-08 19:40 v1.7.0 安装器已发布（本节优先）
 
 - tag `v1.7.0`（→ `f300901`）CI run `37765095255` 成功，Release：`https://github.com/YunxiRamito/Dafeiyu-Go-DeepSeek-Harness-Setup/releases/tag/v1.7.0`（id `406714406`）。
