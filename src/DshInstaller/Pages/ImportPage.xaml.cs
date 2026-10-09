@@ -41,9 +41,10 @@ namespace DshInstaller.Pages
         private OfficialImportPlan _officialPlan;
         private string _officialSource;
         private readonly Dictionary<string, CheckBox> _officialBoxes = new Dictionary<string, CheckBox>();
-        private bool _officialBusy;
         private bool _fillingProfiles;
-        private CancellationTokenSource _officialCancellation;
+        private CancellationTokenSource _importCancellation;
+        private DateTime _importProgressUtc;
+        private ContentDialog _importDialog;
         private bool _confirmationOpen;
         private CancellationTokenSource _discoveryCancellation;
         private DateTime _discoveryProgressUtc;
@@ -72,7 +73,7 @@ namespace DshInstaller.Pages
 
         public void OnCloseRequested()
         {
-            _officialCancellation?.Cancel();
+            CancelImport();
             _discoveryCancellation?.Cancel();
             StatusText.Text = Localization.IsChinese ? "正在完成当前数据操作，请稍候。" : "Finishing the current data operation. Please wait.";
         }
@@ -331,32 +332,30 @@ namespace DshInstaller.Pages
             _boxes.Clear();
             _groups.Clear();
             GroupsCard.Visibility = Visibility.Collapsed;
-            PickButton.IsEnabled = false;
-            PickDshButton.IsEnabled = false;
-            DiscoverButton.IsEnabled = false;
-            DiscoverDrivesButton.IsEnabled = false;
-            _busy = true;
+            ProgressPanel.Visibility = Visibility.Collapsed;
+            SetBusy(true);
 
             try
             {
                 List<BackupGroup> groups = await Task.Run(() => UserDataBackup.DescribeFromArchive(picked, null));
+                if (groups.Count == 0)
+                {
+                    DymArchive.List(picked, null, out string error);
+                    if (!String.IsNullOrWhiteSpace(error)) throw new IOException(error);
+                }
                 FillGroups(groups);
             }
             catch (Exception exception) { StatusText.Text = exception.Message; }
             finally
             {
-                PickButton.IsEnabled = true;
-                PickDshButton.IsEnabled = true;
-                DiscoverButton.IsEnabled = true;
-                DiscoverDrivesButton.IsEnabled = true;
-                _busy = false;
+                SetBusy(false);
             }
             if (_groups.Count > 0) await ShowImportConfirmationAsync(ImportDymAsync);
         }
 
         private async void PickDshButton_Click(object sender, RoutedEventArgs args)
         {
-            if (_busy || _officialBusy || _discoveryCancellation != null || _confirmationOpen) return;
+            if (_busy || _discoveryCancellation != null || _confirmationOpen) return;
             string picked = FolderDialog.Pick(
                 Localization.IsChinese ? "选择 DSH 数据文件夹" : "Choose DSH data folder", null);
             if (String.IsNullOrWhiteSpace(picked)) return;
@@ -365,11 +364,8 @@ namespace DshInstaller.Pages
 
         private async Task SelectDshAsync(string picked)
         {
-            _busy = true;
-            PickButton.IsEnabled = false;
-            PickDshButton.IsEnabled = false;
-            DiscoverButton.IsEnabled = false;
-            DiscoverDrivesButton.IsEnabled = false;
+            ProgressPanel.Visibility = Visibility.Collapsed;
+            SetBusy(true);
             try
             {
                 string home = await Task.Run(() => DshDataImportService.ResolveSourceHome(picked));
@@ -403,11 +399,7 @@ namespace DshInstaller.Pages
             finally
             {
                 _fillingProfiles = false;
-                _busy = false;
-                PickButton.IsEnabled = true;
-                PickDshButton.IsEnabled = true;
-                DiscoverButton.IsEnabled = true;
-                DiscoverDrivesButton.IsEnabled = true;
+                SetBusy(false);
             }
             if (_officialPlan != null) await ShowImportConfirmationAsync(() => ImportOfficialAsync(true));
         }
@@ -415,17 +407,11 @@ namespace DshInstaller.Pages
         private async void DshProfileBox_SelectionChanged(object sender, SelectionChangedEventArgs args)
         {
             if (_fillingProfiles || _busy || String.IsNullOrWhiteSpace(_officialSource)) return;
-            _busy = true;
-            PickButton.IsEnabled = false;
-            PickDshButton.IsEnabled = false;
-            DshProfileBox.IsEnabled = false;
+            SetBusy(true);
             try { await LoadOfficialPreviewAsync(); }
             finally
             {
-                _busy = false;
-                PickButton.IsEnabled = true;
-                PickDshButton.IsEnabled = true;
-                DshProfileBox.IsEnabled = true;
+                SetBusy(false);
             }
         }
 
@@ -473,9 +459,11 @@ namespace DshInstaller.Pages
         {
             if (_officialPlan == null) return;
             var chosen = _officialPlan.Groups.Where(group => _officialBoxes.TryGetValue(group.Id, out var box) && box.IsChecked == true).ToList();
-            DshImportSummary.Text = Localization.IsChinese
+            string summary = Localization.IsChinese
                 ? "来源：" + _officialPlan.SourceHome + "\n目标：" + _officialPlan.TargetHome + "\n已选 " + chosen.Sum(group => group.Files) + " 个文件；同名项目 " + chosen.Sum(group => group.ExistingUnits) + " 个将保留并跳过。"
                 : "Source: " + _officialPlan.SourceHome + "\nTarget: " + _officialPlan.TargetHome + "\n" + chosen.Sum(group => group.Files) + " files selected; " + chosen.Sum(group => group.ExistingUnits) + " existing items will be kept and skipped.";
+            string warnings = FormatPlanWarnings(_officialPlan.Warnings);
+            DshImportSummary.Text = String.IsNullOrWhiteSpace(warnings) ? summary : summary + "\n\n" + warnings;
         }
 
         private void FillGroups(List<BackupGroup> groups)
@@ -562,105 +550,55 @@ namespace DshInstaller.Pages
                 policy = (ConflictPolicy)selected.Tag;
             }
 
-            _busy = true;
-            PickButton.IsEnabled = false;
-            PickDshButton.IsEnabled = false;
-            if (ImportButton != null)
+            using var cancellation = new CancellationTokenSource();
+            BeginImport(cancellation);
+            try
             {
-                ImportButton.IsEnabled = false;
+                string archive = _archive;
+                string dshRoot = InstallSession.Current.DshRoot;
+                if (!await RequireStoppedTargetAsync(dshRoot, cancellation.Token)) return;
+                string error = null;
+                bool ok = await Task.Run(() => UserDataBackup.Import(
+                    archive, dshRoot, chosen, policy, _ => ConflictChoice.KeepBoth,
+                    (text, percent) => ReportImportProgress(cancellation, text, percent),
+                    null, cancellation.Token, out error));
+                if (ok)
+                {
+                    _imported = true;
+                    SetImportProgress(100);
+                    ImportDetail.Text = Localization.IsChinese ? "恢复完成。" : "Restore complete.";
+                    StatusText.Text = Localization.IsChinese
+                        ? "数据已经搬回来了。点下一步结束安装（重开 DSH 后生效）。"
+                        : "Your data is back. Continue to finish (restart DSH to apply).";
+                }
+                else if (cancellation.IsCancellationRequested)
+                    ShowImportCanceled();
+                else
+                    ShowImportFailure(error);
             }
-
-            ProgressPanel.Visibility = Visibility.Visible;
-            ImportProgress.IsIndeterminate = false;
-            ImportProgress.Value = 0;
-            ImportDetail.Text = Localization.IsChinese ? "准备中…" : "Preparing…";
-            StatusText.Text = String.Empty;
-
-            string dshRoot = InstallSession.Current.DshRoot;
-
-            // 「两个都留」在逻辑层是"问调用方"这一档;这里的答案是"永远两个都留",
-            // 不弹一百个对话框去打断用户。
-            Func<string, ConflictChoice> ask = delegate
-            {
-                return ConflictChoice.KeepBoth;
-            };
-
-            string error = null;
-            bool ok = await Task.Run(delegate
-            {
-                string innerError;
-                bool result = UserDataBackup.Import(
-                    _archive,
-                    dshRoot,
-                    chosen,
-                    policy,
-                    ask,
-                    delegate(string text, double percent)
-                    {
-                        _dispatcher.TryEnqueue(delegate
-                        {
-                            if (text != null)
-                            {
-                                ImportDetail.Text = text;
-                            }
-
-                            ImportProgress.Value = Math.Max(0, Math.Min(100, percent));
-                        });
-                    },
-                    null,
-                    CancellationToken.None,
-                    out innerError);
-
-                error = innerError;
-                return result;
-            });
-
-            _busy = false;
-            PickButton.IsEnabled = true;
-            PickDshButton.IsEnabled = true;
-            if (ImportButton != null)
-            {
-                ImportButton.IsEnabled = true;
-            }
-
-            if (ok)
-            {
-                _imported = true;
-                ImportProgress.Value = 100;
-                ImportDetail.Text = Localization.IsChinese ? "恢复完成。" : "Restore complete.";
-                StatusText.Text = Localization.IsChinese
-                    ? "数据已经搬回来了。点下一步结束安装（重开 DSH 后生效）。"
-                    : "Your data is back. Continue to finish (restart DSH to apply).";
-            }
-            else
-            {
-                ImportDetail.Text = Localization.IsChinese ? "恢复失败。" : "Restore failed.";
-                StatusText.Text = String.IsNullOrWhiteSpace(error)
-                    ? (Localization.IsChinese ? "恢复失败,原因未知。" : "Restore failed.")
-                    : (Localization.IsChinese ? "恢复失败：" : "Restore failed: ") + error;
-            }
+            catch (OperationCanceledException) { ShowImportCanceled(); }
+            catch (Exception exception) { ShowImportFailure(exception.Message); }
+            finally { EndImport(cancellation); }
         }
 
         private async void StartOfficialImport() => await ImportOfficialAsync(false);
 
         private async Task ImportOfficialAsync(bool confirmed)
         {
-            if (_officialBusy || _officialPlan == null) return;
+            if (_busy || _officialPlan == null) return;
             List<string> selected = _officialBoxes.Where(pair => pair.Value.IsChecked == true).Select(pair => pair.Key).ToList();
-            if (selected.Count == 0) return;
+            if (selected.Count == 0)
+            {
+                StatusText.Text = Localization.IsChinese ? "请选择要导入的数据。" : "Select the data to import.";
+                return;
+            }
             if (DevOptions.DryRun)
             {
                 StatusText.Text = Localization.IsChinese ? "演练模式仅预览数据，不执行导入。" : "Dry-run mode previews data without importing.";
                 return;
             }
-            _officialBusy = true;
-            _busy = true;
-            PickButton.IsEnabled = false;
-            PickDshButton.IsEnabled = false;
-            ImportButton.IsEnabled = false;
-            ProgressPanel.Visibility = Visibility.Visible;
-            ImportProgress.Value = 0;
-            ImportDetail.Text = Localization.IsChinese ? "准备中…" : "Preparing…";
+            using var cancellation = new CancellationTokenSource();
+            BeginImport(cancellation);
             try
             {
                 OfficialImportPlan plan = _officialPlan;
@@ -675,54 +613,124 @@ namespace DshInstaller.Pages
                     DefaultButton = ContentDialogButton.Close
                 };
                 if (!confirmed && await dialog.ShowAsync() != ContentDialogResult.Primary) return;
-                string targetRoot = InstallSession.Current.DshRoot;
-                bool running = await Task.Run(() => DshInstaller.Shared.DshLocator.IsRootRunning(targetRoot));
-                if (running)
-                {
-                    StatusText.Text = Localization.IsChinese ? "请先停止目标 DSH 服务，再导入数据。" : "Stop the target DSH service before importing.";
-                    return;
-                }
-                using var cancellation = new CancellationTokenSource();
-                _officialCancellation = cancellation;
-                CancelOfficialImportButton.Visibility = Visibility.Visible;
-                DshProfileBox.IsEnabled = false;
-                foreach (var box in _officialBoxes.Values) box.IsEnabled = false;
+                if (!await RequireStoppedTargetAsync(InstallSession.Current.DshRoot, cancellation.Token)) return;
                 OfficialImportResult result = await Task.Run(() => DshDataImportService.Import(plan, selected,
-                    (text, percent) => _dispatcher.TryEnqueue(delegate
-                    {
-                        ImportDetail.Text = text;
-                        ImportProgress.Value = Math.Max(0, Math.Min(100, percent));
-                    }), cancellation.Token));
+                    (text, percent) => ReportImportProgress(cancellation, text, percent), cancellation.Token));
                 _imported |= result.Imported > 0;
-                ImportProgress.Value = result.Ok ? 100 : ImportProgress.Value;
-                ImportDetail.Text = result.Ok ? result.Summary : (result.Canceled ? (Localization.IsChinese ? "已取消，已导入的数据保留。" : "Canceled. Imported data is retained.")
-                    : result.Error ?? (Localization.IsChinese ? "导入失败" : "Import failed")) + "\n" + result.Summary;
+                if (result.Ok) SetImportProgress(100);
+                var details = new List<string>();
+                if (result.Ok) details.Add(result.Summary);
+                else details.Add((result.Canceled ? (Localization.IsChinese ? "已取消，已导入的数据保留。" : "Canceled. Imported data is retained.")
+                    : result.Error ?? (Localization.IsChinese ? "导入失败" : "Import failed")) + "\n" + result.Summary);
+                if (plan.Warnings.Count > 0) details.Add(FormatPlanWarnings(plan.Warnings));
+                ImportDetail.Text = String.Join("\n\n", details);
                 StatusText.Text = result.Ok ? (Localization.IsChinese ? "DSH 数据已经导入，完成安装后重启服务生效。" : "DSH data imported. Restart the service after setup.")
-                    : (Localization.IsChinese ? "DSH 数据导入未完成。" : "DSH data import did not complete.");
+                    : ImportDetail.Text;
             }
-            catch (Exception exception)
-            {
-                ImportDetail.Text = exception.Message;
-                StatusText.Text = Localization.IsChinese ? "DSH 数据导入失败。" : "DSH data import failed.";
-            }
-            finally
-            {
-                _officialBusy = false;
-                _busy = false;
-                PickButton.IsEnabled = true;
-                PickDshButton.IsEnabled = true;
-                ImportButton.IsEnabled = true;
-                DshProfileBox.IsEnabled = true;
-                foreach (var box in _officialBoxes.Values) box.IsEnabled = true;
-                _officialCancellation = null;
-                CancelOfficialImportButton.Visibility = Visibility.Collapsed;
-            }
+            catch (OperationCanceledException) { ShowImportCanceled(); }
+            catch (Exception exception) { ShowImportFailure(exception.Message); }
+            finally { EndImport(cancellation); }
         }
 
         private void CancelOfficialImportButton_Click(object sender, RoutedEventArgs args)
         {
-            _officialCancellation?.Cancel();
+            CancelImport();
+        }
+
+        private void CancelImport()
+        {
+            if (_importCancellation == null) return;
+            _importCancellation.Cancel();
+            CancelOfficialImportButton.IsEnabled = false;
             ImportDetail.Text = Localization.IsChinese ? "正在取消…" : "Canceling…";
+        }
+
+        private void SetBusy(bool busy)
+        {
+            _busy = busy;
+            PickButton.IsEnabled = !busy;
+            PickDshButton.IsEnabled = !busy;
+            DiscoverButton.IsEnabled = !busy;
+            DiscoverDrivesButton.IsEnabled = !busy;
+            ImportButton.IsEnabled = !busy;
+            DshProfileBox.IsEnabled = !busy;
+            ConflictBox.IsEnabled = !busy;
+            foreach (var box in _boxes.Values) box.IsEnabled = !busy;
+            foreach (var box in _officialBoxes.Values) box.IsEnabled = !busy;
+            if (_importDialog != null) _importDialog.IsPrimaryButtonEnabled = !busy;
+            App.MainWindowInstance?.RefreshChrome();
+        }
+
+        private void BeginImport(CancellationTokenSource cancellation)
+        {
+            _importCancellation = cancellation;
+            _importProgressUtc = DateTime.MinValue;
+            SetBusy(true);
+            ProgressPanel.Visibility = Visibility.Visible;
+            ImportProgress.IsIndeterminate = false;
+            SetImportProgress(0);
+            ImportDetail.Text = Localization.IsChinese ? "准备中…" : "Preparing…";
+            StatusText.Text = String.Empty;
+            CancelOfficialImportButton.Visibility = Visibility.Visible;
+            CancelOfficialImportButton.IsEnabled = true;
+        }
+
+        private void EndImport(CancellationTokenSource cancellation)
+        {
+            if (_importCancellation == cancellation) _importCancellation = null;
+            CancelOfficialImportButton.Visibility = Visibility.Collapsed;
+            SetBusy(false);
+        }
+
+        private void ReportImportProgress(CancellationTokenSource cancellation, string text, double percent)
+        {
+            if ((DateTime.UtcNow - _importProgressUtc).TotalMilliseconds < 100 && percent < 100) return;
+            _importProgressUtc = DateTime.UtcNow;
+            _dispatcher.TryEnqueue(() =>
+            {
+                if (_importCancellation != cancellation || cancellation.IsCancellationRequested) return;
+                if (text != null) ImportDetail.Text = text;
+                SetImportProgress(percent);
+            });
+        }
+
+        private void SetImportProgress(double percent)
+        {
+            ImportProgress.Value = Math.Max(0, Math.Min(100, percent));
+            ImportProgressText.Text = ImportProgress.Value.ToString("0.0") + "%";
+        }
+
+        private async Task<bool> RequireStoppedTargetAsync(string root, CancellationToken token)
+        {
+            if (String.IsNullOrWhiteSpace(root))
+                throw new InvalidOperationException(Localization.IsChinese ? "安装目标目录未设置。" : "The installation target is not configured.");
+            bool running = await Task.Run(() => DshInstaller.Shared.DshLocator.IsRootRunning(root));
+            token.ThrowIfCancellationRequested();
+            if (!running) return true;
+            ShowImportFailure(Localization.IsChinese ? "请先停止目标 DSH 服务，再导入数据。" : "Stop the target DSH service before importing.");
+            return false;
+        }
+
+        private void ShowImportCanceled()
+        {
+            ImportDetail.Text = Localization.IsChinese ? "已取消导入；已恢复的数据保留。" : "Import canceled. Restored data is retained.";
+            StatusText.Text = ImportDetail.Text;
+        }
+
+        private void ShowImportFailure(string error)
+        {
+            string detail = String.IsNullOrWhiteSpace(error)
+                ? (Localization.IsChinese ? "未提供具体错误，请检查数据来源与目标目录。" : "No error details were provided. Check the source and target folders.")
+                : error;
+            ImportDetail.Text = (Localization.IsChinese ? "导入失败：" : "Import failed: ") + detail;
+            StatusText.Text = ImportDetail.Text;
+        }
+
+        private string FormatPlanWarnings(IEnumerable<string> warnings)
+        {
+            List<string> items = warnings.Where(value => !String.IsNullOrWhiteSpace(value)).ToList();
+            if (items.Count == 0) return String.Empty;
+            return (Localization.IsChinese ? "未迁移的项目：" : "Items not migrated:") + "\n• " + String.Join("\n• ", items);
         }
 
         private async Task ShowImportConfirmationAsync(Func<Task> import)
@@ -730,6 +738,10 @@ namespace DshInstaller.Pages
             var parent = GroupsCard.Parent as Panel;
             if (parent == null) return;
             int index = parent.Children.IndexOf(GroupsCard);
+            var progressParent = ProgressPanel.Parent as Panel;
+            int progressIndex = progressParent.Children.IndexOf(ProgressPanel);
+            var statusParent = StatusText.Parent as Panel;
+            int statusIndex = statusParent.Children.IndexOf(StatusText);
             parent.Children.Remove(GroupsCard);
             GroupsCard.Visibility = Visibility.Visible;
             var groupBackground = GroupsCard.Background;
@@ -751,10 +763,10 @@ namespace DshInstaller.Pages
             profileParent.Children.Remove(DshProfileBox);
             content.Children.Add(DshProfileBox);
             content.Children.Add(GroupsCard);
-            var progressParent = ProgressPanel.Parent as Panel;
-            int progressIndex = progressParent.Children.IndexOf(ProgressPanel);
             progressParent.Children.Remove(ProgressPanel);
             content.Children.Add(ProgressPanel);
+            statusParent.Children.Remove(StatusText);
+            content.Children.Add(StatusText);
             var dialog = new ContentDialog
             {
                 XamlRoot = XamlRoot, Title = Localization.IsChinese ? "导入数据" : "Import data",
@@ -764,18 +776,55 @@ namespace DshInstaller.Pages
             };
             dialog.PrimaryButtonClick += async (sender, args) =>
             {
+                if (_busy)
+                {
+                    args.Cancel = true;
+                    return;
+                }
+                bool hasSelection = _officialPlan != null
+                    ? _officialBoxes.Values.Any(box => box.IsChecked == true)
+                    : _boxes.Values.Any(box => box.IsChecked == true);
+                if (!hasSelection)
+                {
+                    args.Cancel = true;
+                    StatusText.Text = Localization.IsChinese ? "请选择要导入的数据。" : "Select the data to import.";
+                    return;
+                }
                 var deferral = args.GetDeferral();
                 args.Cancel = true;
                 dialog.IsPrimaryButtonEnabled = false;
-                dialog.CloseButtonText = String.Empty;
-                try { await import(); dialog.Hide(); }
-                finally { deferral.Complete(); }
+                dialog.CloseButtonText = Localization.IsChinese ? "取消导入" : "Cancel import";
+                try { await import(); }
+                catch (OperationCanceledException) { ShowImportCanceled(); }
+                catch (Exception exception) { ShowImportFailure(exception.Message); }
+                finally
+                {
+                    dialog.PrimaryButtonText = String.Empty;
+                    dialog.IsPrimaryButtonEnabled = false;
+                    dialog.CloseButtonText = Localization.IsChinese ? "关闭" : "Close";
+                    dialog.DefaultButton = ContentDialogButton.Close;
+                    deferral.Complete();
+                }
+            };
+            dialog.CloseButtonClick += (sender, args) =>
+            {
+                if (!_busy) return;
+                args.Cancel = true;
+                CancelImport();
+            };
+            dialog.Closing += (sender, args) =>
+            {
+                if (!_busy) return;
+                args.Cancel = true;
+                CancelImport();
             };
             _confirmationOpen = true;
+            _importDialog = dialog;
             App.MainWindowInstance?.RefreshChrome();
             try { await dialog.ShowAsync(); }
             finally
             {
+                _importDialog = null;
                 _confirmationOpen = false;
                 App.MainWindowInstance?.RefreshChrome();
                 content.Children.Remove(GroupsCard);
@@ -783,12 +832,14 @@ namespace DshInstaller.Pages
                 DshProfileBox.Visibility = Visibility.Collapsed;
                 profileParent.Children.Insert(profileIndex, DshProfileBox);
                 content.Children.Remove(ProgressPanel);
+                content.Children.Remove(StatusText);
                 GroupsCard.Visibility = Visibility.Collapsed;
                 GroupsCard.Background = groupBackground;
                 GroupsCard.BorderThickness = groupBorder;
                 GroupsCard.Padding = groupPadding;
                 parent.Children.Insert(index, GroupsCard);
                 progressParent.Children.Insert(progressIndex, ProgressPanel);
+                statusParent.Children.Insert(statusIndex, StatusText);
             }
         }
     }

@@ -3,8 +3,12 @@ param(
     [Parameter(Mandatory=$true)][string]$Target,
     [Parameter(Mandatory=$true)][string]$Output,
     [string]$Source,
+    [string]$DymSource,
     [switch]$Discovery,
-    [switch]$CancelScan
+    [switch]$AllDrives,
+    [switch]$CancelScan,
+    [switch]$ConfirmPreview,
+    [switch]$EmptySelection
 )
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName UIAutomationClient
@@ -78,7 +82,8 @@ try {
     }
     [ImportPageCapture]::SetWindowPos($handle,[IntPtr]::Zero,40,40,1200,760,4) | Out-Null
     if($Discovery) {
-        (Find-Button '自动查找').GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern).Invoke()
+        $searchName=if($AllDrives){'扫描其他磁盘'}else{'自动查找'}
+        (Find-Button $searchName).GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern).Invoke()
         $deadline=[datetime]::UtcNow.AddSeconds(30)
         do {
             Start-Sleep -Milliseconds 100
@@ -88,9 +93,10 @@ try {
         Assert-Name 'Dafeiyu-Go 备份 · .dym'
         Assert-Name 'DSH 客户端数据'
         Capture 'discovery-results'
-        if(!$Source){$Source=Join-Path (Split-Path -Parent $Target) 'source'}
-        $pathNode=Visible-Nodes | Where-Object {$_.Current.Name -eq $Source} | Select-Object -First 1
-        if(!$pathNode){throw "Isolated discovery source is not shown: $Source"}
+        $selectedSource=if($DymSource){$DymSource}else{$Source}
+        if(!$selectedSource){$selectedSource=Join-Path (Split-Path -Parent $Target) 'source'}
+        $pathNode=Visible-Nodes | Where-Object {$_.Current.Name -eq $selectedSource} | Select-Object -First 1
+        if(!$pathNode){throw "Isolated discovery source is not shown: $selectedSource"}
         $item=$pathNode
         while($item -and $item.Current.ControlType -ne [Windows.Automation.ControlType]::ListItem){$item=[Windows.Automation.TreeWalker]::ControlViewWalker.GetParent($item)}
         if(!$item){throw 'Discovered source has no selectable list item'}
@@ -101,10 +107,40 @@ try {
             Start-Sleep -Milliseconds 100
             $confirmation=Visible-Nodes | Where-Object {$_.Current.Name -eq '导入数据'}
         } while(!$confirmation -and [datetime]::UtcNow -lt $deadline)
-        if(!$confirmation){throw 'Selected discovery source did not enter import confirmation'}
-        if(!(Visible-Nodes | Where-Object {$_.Current.Name.StartsWith('来源：') -and $_.Current.Name.Contains($Source)})){throw 'Import confirmation does not show selected isolated source'}
+        if(!$confirmation){Capture 'missing-import-confirmation'; throw 'Selected discovery source did not enter import confirmation'}
+        if(!(Visible-Nodes | Where-Object {$_.Current.Name.StartsWith('来源：') -and $_.Current.Name.Contains($selectedSource)})){throw 'Import confirmation does not show selected isolated source'}
         Capture 'discovered-import-confirmation'
-        (Find-Button '取消').GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern).Invoke()
+        if($EmptySelection) {
+            $checks=@(Visible-Nodes | Where-Object {$_.Current.ControlType -eq [Windows.Automation.ControlType]::CheckBox})
+            if(!$checks.Count){throw 'Import confirmation contains no selectable groups'}
+            foreach($check in $checks) {
+                $toggle=$check.GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern)
+                if($toggle.Current.ToggleState -eq [Windows.Automation.ToggleState]::On){$toggle.Toggle()}
+            }
+            (Find-Button '导入').GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern).Invoke()
+            Start-Sleep -Milliseconds 150
+            Assert-Name '请选择要导入的数据。'
+            if(!(Find-Button '导入').Current.IsEnabled){Capture 'empty-selection-blocked'; throw 'Empty selection disables the import action permanently'}
+            foreach($check in $checks) {
+                $toggle=$check.GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern)
+                if($toggle.Current.ToggleState -eq [Windows.Automation.ToggleState]::Off){$toggle.Toggle()}
+            }
+            Write-Host 'PASS empty import selection remains editable and can be retried'
+        }
+        if($ConfirmPreview) {
+            (Find-Button '导入').GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern).Invoke()
+            $deadline=[datetime]::UtcNow.AddSeconds(5)
+            do {
+                Start-Sleep -Milliseconds 100
+                $result=Visible-Nodes | Where-Object {$_.Current.Name -eq '演练模式仅预览数据，不执行导入。'}
+                $close=Find-Button '关闭'
+            } while((!$result -or !$close) -and [datetime]::UtcNow -lt $deadline)
+            if(!$result -or !$close -or !(Visible-Nodes | Where-Object {$_.Current.Name -eq '导入数据'})){throw 'Import result did not remain visible in the dialog'}
+            Capture 'import-result-retained'
+            $close.GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern).Invoke()
+        } else {
+            (Find-Button '取消').GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern).Invoke()
+        }
         $deadline=[datetime]::UtcNow.AddSeconds(5)
         do {
             Start-Sleep -Milliseconds 100

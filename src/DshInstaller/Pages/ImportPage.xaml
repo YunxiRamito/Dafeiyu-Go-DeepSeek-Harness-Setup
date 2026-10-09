@@ -100,6 +100,7 @@
                 <ProgressBar
                     x:Name="ImportProgress"
                     Height="6" />
+                <TextBlock x:Name="ImportProgressText" FontSize="12.5" Foreground="{ThemeResource SecondaryTextBrush}" />
                 <TextBlock
                     x:Name="ImportDetail"
                     FontSize="12.5"

@@ -25,6 +25,7 @@
 
 param(
     [switch]$NoDesktop,
+    [string]$OutputDirectory,
     [ValidateSet('All', 'PrepareInner', 'Compose')]
     [string]$Stage = 'All',
     [string]$SignedPayloadDirectory,
@@ -38,7 +39,9 @@ $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $proj = Join-Path $root 'src\DshInstaller\DshInstaller.csproj'
 $bootDir = Join-Path $root 'boot'
 $assets = Join-Path $root 'assets'
-$dist = Join-Path $root 'dist'
+$dist = if ([string]::IsNullOrWhiteSpace($OutputDirectory)) { Join-Path $root 'dist' }
+    else { [IO.Path]::GetFullPath($OutputDirectory) }
+New-Item -ItemType Directory -Path $dist -Force | Out-Null
 $publishDir = Join-Path $dist 'selfcontained'
 $payloadZip = Join-Path $dist 'payload.zip'
 $bootExe = Join-Path $dist 'DSH-Installer-Setup.exe'
@@ -99,9 +102,9 @@ if (-not (Test-Path -LiteralPath $icon)) {
 if ($buildPayload) {
     Write-Host '[1/7] 框架依赖发布(不带 .NET 运行时,运行库由引导程序按需装)' -ForegroundColor Cyan
 
-    # 先把占用输出目录的进程请走:进程活着的话 Remove-Item 会静默失败,
-    # 于是旧的 .xbf 留在原地和新的一起堆着 —— 界面改动"完全不生效"就是这么来的。
-    Get-Process | Where-Object { $_.ProcessName -like '*DSH-Installer*' -or $_.ProcessName -like '*DSH-Uninstall*' } |
+    # Only release processes loaded from this build output directory.
+    $publishPrefix = [IO.Path]::GetFullPath($publishDir).TrimEnd('\') + '\'
+    Get-Process | Where-Object { $_.Path -and $_.Path.StartsWith($publishPrefix, [StringComparison]::OrdinalIgnoreCase) } |
         Stop-Process -Force -ErrorAction SilentlyContinue
     Start-Sleep -Milliseconds 800
 

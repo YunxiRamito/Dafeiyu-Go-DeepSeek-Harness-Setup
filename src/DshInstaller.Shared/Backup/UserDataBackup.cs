@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text.Json.Nodes;
 using System.Threading;
 
 namespace DshInstaller.Shared.Backup
@@ -100,6 +101,7 @@ namespace DshInstaller.Shared.Backup
                 NameEn = "Settings and plug-in list",
                 RelativePath = @".dsh\profiles",
                 ArchivePrefix = ".dsh/profiles",
+                AdditionalPrefixes = new[] { "profiles" },
                 ByDefault = true,
             },
             new GroupTemplate
@@ -119,7 +121,7 @@ namespace DshInstaller.Shared.Backup
                 NameEn = "Plug-in files",
                 RelativePath = "plugins",
                 ArchivePrefix = "plugins",
-                AdditionalPrefixes = new[] { ".dsh/plugins" },
+                AdditionalPrefixes = new[] { ".dsh/plugins", ".dsh/plugin-profiles" },
                 ByDefault = true,
             },
             new GroupTemplate
@@ -129,13 +131,13 @@ namespace DshInstaller.Shared.Backup
                 NameEn = "Sessions and cache",
                 RelativePath = @".dsh\storages",
                 ArchivePrefix = ".dsh/storages",
-                AdditionalPrefixes = new[] { ".dsh/sessions" },
+                AdditionalPrefixes = new[] { ".dsh/sessions", "storages", "sessions" },
                 ByDefault = false,
             },
         };
 
         /// <summary>列出这台机器上有哪些可备份的数据(不存在的组不会出现)。</summary>
-        public static List<BackupGroup> Describe(string dshRoot)
+        public static List<BackupGroup> Describe(string dshRoot, string dshHome = null)
         {
             List<BackupGroup> groups = new List<BackupGroup>();
             if (String.IsNullOrWhiteSpace(dshRoot))
@@ -146,7 +148,7 @@ namespace DshInstaller.Shared.Backup
             for (int index = 0; index < Templates.Length; index++)
             {
                 GroupTemplate template = Templates[index];
-                string path = Prefixes(template).Select(prefix => Path.Combine(dshRoot, prefix.Replace('/', Path.DirectorySeparatorChar)))
+                string path = Prefixes(template).Select(prefix => ResolveDataPath(dshRoot, dshHome, prefix))
                     .FirstOrDefault(Directory.Exists);
 
                 bool exists = false;
@@ -158,6 +160,12 @@ namespace DshInstaller.Shared.Backup
                 {
                 }
 
+                if (!exists && template.Id == GroupPlugins)
+                {
+                    string profiles = ResolveDataPath(dshRoot, dshHome, ".dsh/profiles");
+                    exists = Directory.Exists(profiles) && Directory.GetDirectories(profiles)
+                        .Any(profile => File.Exists(Path.Combine(profile, "package.json")));
+                }
                 if (!exists)
                 {
                     continue;
@@ -202,7 +210,8 @@ namespace DshInstaller.Shared.Backup
                     }
 
                     if (Prefixes(template).Any(prefix => String.Equals(path, prefix, StringComparison.OrdinalIgnoreCase)
-                        || path.StartsWith(prefix + "/", StringComparison.OrdinalIgnoreCase)))
+                        || path.StartsWith(prefix + "/", StringComparison.OrdinalIgnoreCase))
+                        || template.Id == GroupPlugins && IsDymPluginProfilePath(path))
                     {
                         found = true;
                         break;
@@ -245,7 +254,8 @@ namespace DshInstaller.Shared.Backup
             string archivePath,
             Action<string, double> report,
             Action<string> log,
-            CancellationToken token)
+            CancellationToken token,
+            string dshHome = null)
         {
             if (String.IsNullOrWhiteSpace(dshRoot)
                 || chosen == null
@@ -255,7 +265,10 @@ namespace DshInstaller.Shared.Backup
                 return false;
             }
 
-            List<string> relativePaths = new List<string>();
+            var exportItems = new List<ExportItem>();
+            HashSet<string> seenSourceFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            HashSet<string> seenSourceDirectories = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            long totalBytes = 0;
             for (int index = 0; index < chosen.Count; index++)
             {
                 BackupGroup group = chosen[index];
@@ -265,30 +278,97 @@ namespace DshInstaller.Shared.Backup
                 }
 
                 foreach (string prefix in group.ArchivePrefixes ?? new[] { group.ArchivePrefix })
-                    if (Directory.Exists(Path.Combine(dshRoot, prefix.Replace('/', Path.DirectorySeparatorChar)))) relativePaths.Add(prefix);
+                {
+                    if (prefix == ".dsh/plugin-profiles") continue;
+                    string path = ResolveDataPath(dshRoot, dshHome, prefix);
+                    if (!Directory.Exists(path) || !seenSourceDirectories.Add(Path.GetFullPath(path))) continue;
+                    if (log != null) log("正在扫描 " + path);
+                    if (report != null) report("正在扫描 " + prefix, 0);
+                    string archivePrefix = prefix;
+                    if (String.IsNullOrWhiteSpace(dshHome) && Directory.Exists(Path.Combine(dshRoot, "profiles")))
+                        archivePrefix = prefix.StartsWith(".dsh/", StringComparison.Ordinal) ? prefix.Substring(5) : prefix;
+                    CollectExportFiles(path, archivePrefix, exportItems, seenSourceFiles, ref totalBytes, log, token);
+                    if (report != null) report("已扫描 " + exportItems.Count + " 个文件 · " + FormatSize(totalBytes), 0);
+                }
             }
+            if (chosen.Any(group => group?.Id == GroupPlugins))
+                CollectProfilePlugins(dshRoot, dshHome, exportItems, seenSourceFiles, ref totalBytes, log, token);
 
-            if (relativePaths.Count == 0)
+            if (exportItems.Count == 0)
             {
+                if (log != null) log("所选备份组里没有可归档文件(空目录、node_modules 和链接不会打包)。");
                 return false;
             }
 
             if (log != null)
             {
-                log("开始打包:" + String.Join(", ", relativePaths.ToArray()));
+                log("开始打包：" + exportItems.Count + " 个文件，" + FormatSize(totalBytes));
             }
+            string staging = Path.Combine(DymArchive.GetWritableCacheRoot(), "export-" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                var sourceFiles = new List<string>();
+                long stagedBytes = 0;
+                var progressClock = System.Diagnostics.Stopwatch.StartNew();
+                long lastProgress = -100;
+                for (int index = 0; index < exportItems.Count; index++)
+                {
+                    token.ThrowIfCancellationRequested();
+                    ExportItem item = exportItems[index];
+                    string target = Path.Combine(staging, item.Relative.Replace('/', Path.DirectorySeparatorChar));
+                    Directory.CreateDirectory(Path.GetDirectoryName(target));
+                    using (var input = item.Content == null
+                        ? (Stream)new FileStream(item.Source, FileMode.Open, FileAccess.Read, FileShare.Read)
+                        : new MemoryStream(System.Text.Encoding.UTF8.GetBytes(item.Content)))
+                    using (var output = new FileStream(target, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+                    {
+                        byte[] buffer = new byte[81920];
+                        int read;
+                        while ((read = input.Read(buffer, 0, buffer.Length)) > 0)
+                        {
+                            token.ThrowIfCancellationRequested();
+                            output.Write(buffer, 0, read);
+                            stagedBytes += read;
+                            if (progressClock.ElapsedMilliseconds - lastProgress >= 100)
+                            {
+                                lastProgress = progressClock.ElapsedMilliseconds;
+                                report?.Invoke("正在准备 (" + (index + 1) + "/" + exportItems.Count + ") · "
+                                    + FormatSize(stagedBytes) + "/" + FormatSize(totalBytes) + " · " + item.Relative,
+                                    totalBytes == 0 ? 0 : stagedBytes * 30d / totalBytes);
+                            }
+                        }
+                    }
+                    sourceFiles.Add(item.Relative);
+                }
+                if (report != null) report("准备压缩 " + sourceFiles.Count + " 个文件 · " + FormatSize(totalBytes), 30);
 
-            // 关键:工作目录设成 DSH 根目录,传相对路径 —— 这样 7z 存进去的就是相对路径
+            int packed = 0;
+            double currentPercent = 30;
             bool ok = DymArchive.Create(
                 archivePath,
-                relativePaths,
-                dshRoot,
+                sourceFiles,
+                staging,
                 delegate(string text, double percent)
                 {
                     if (report != null)
                     {
-                        report("正在打包:" + archivePath, percent);
+                        if (!Double.IsNaN(percent))
+                        {
+                            currentPercent = 30 + percent * 0.7;
+                            // 7z 的百分比是整个压缩阶段的总体进度。
+                            report("正在压缩 " + sourceFiles.Count + " 个文件 · " + FormatSize(totalBytes)
+                                + " · " + Math.Round(percent) + "%", currentPercent);
+                        }
+                        else if (!String.IsNullOrWhiteSpace(text))
+                        {
+                            string file = DescribePackingLine(text);
+                            if (file != null) packed++;
+                            else if (!text.StartsWith("Add new data", StringComparison.OrdinalIgnoreCase)) return;
+                            report("正在压缩 (" + Math.Min(packed, sourceFiles.Count) + "/" + sourceFiles.Count + ") "
+                                + (file ?? text) + " · " + FormatSize(totalBytes), currentPercent);
+                        }
                     }
+                    if (!String.IsNullOrWhiteSpace(text) && log != null) log(text);
                 },
                 log,
                 token,
@@ -300,6 +380,182 @@ namespace DshInstaller.Shared.Backup
             }
 
             return ok;
+            }
+            finally
+            {
+                try { if (Directory.Exists(staging)) Directory.Delete(staging, true); }
+                catch (Exception exception) { log?.Invoke("无法清理临时备份目录：" + exception.Message); }
+            }
+        }
+
+        private static void CollectProfilePlugins(string root, string home, List<ExportItem> items,
+            HashSet<string> seen, ref long bytes, Action<string> log, CancellationToken token)
+        {
+            string actualHome = String.IsNullOrWhiteSpace(home)
+                ? Directory.Exists(Path.Combine(root, "profiles")) ? root : Path.Combine(root, ".dsh") : home;
+            string profiles = Path.Combine(actualHome, "profiles");
+            if (!Directory.Exists(profiles)) return;
+            foreach (string profile in Directory.GetDirectories(profiles))
+            {
+                token.ThrowIfCancellationRequested();
+                string manifestFile = Path.Combine(profile, "package.json");
+                if (!File.Exists(manifestFile)) continue;
+                JsonObject manifest = JsonNode.Parse(File.ReadAllText(manifestFile)) as JsonObject
+                    ?? throw new IOException("插件清单不是 JSON 对象：" + manifestFile);
+                if (manifest["dependencies"] is not JsonObject dependencies) continue;
+                string pluginProfilePrefix = ".dsh/plugin-profiles/" + Path.GetFileName(profile);
+                var unavailable = new HashSet<string>(StringComparer.Ordinal);
+                foreach (var dependency in dependencies.ToList())
+                {
+                    token.ThrowIfCancellationRequested();
+                    string name = dependency.Key;
+                    if (name.StartsWith("@deepseek-ai/dsh-", StringComparison.Ordinal)) continue;
+                    if (name.Contains("..") || name.Contains('\\') || name.Contains(':') || name.StartsWith('/'))
+                        throw new IOException("插件名称无效：" + name);
+                    int itemStart = items.Count;
+                    long bytesBefore = bytes;
+                    try
+                    {
+                        string module = Path.Combine(profile, "node_modules", name.Replace('/', Path.DirectorySeparatorChar));
+                        if (!Directory.Exists(module)) module = Path.Combine(profiles, "node_modules", name.Replace('/', Path.DirectorySeparatorChar));
+                        if (!Directory.Exists(module))
+                        {
+                            string spec = dependency.Value?.GetValue<string>() ?? String.Empty;
+                            if (spec.StartsWith("file:", StringComparison.OrdinalIgnoreCase) || spec.StartsWith("link:", StringComparison.OrdinalIgnoreCase))
+                                throw new IOException("本地插件文件不存在。");
+                            continue;
+                        }
+                        MaterializePlugin(module, pluginProfilePrefix + "/node_modules/" + name, actualHome, root, items, seen,
+                            new HashSet<string>(StringComparer.OrdinalIgnoreCase), ref bytes, token);
+                        string installedSpec = dependency.Value?.GetValue<string>() ?? String.Empty;
+                        if (installedSpec.StartsWith("file:", StringComparison.OrdinalIgnoreCase)
+                            || installedSpec.StartsWith("link:", StringComparison.OrdinalIgnoreCase))
+                            dependencies[name] = "file:./node_modules/" + name;
+                    }
+                    catch (Exception exception) when (exception is IOException || exception is UnauthorizedAccessException)
+                    {
+                        for (int rollback = items.Count - 1; rollback >= itemStart; rollback--) seen.Remove(items[rollback].Relative);
+                        items.RemoveRange(itemStart, items.Count - itemStart);
+                        bytes = bytesBefore;
+                        unavailable.Add(name);
+                        if (dependency.Value?.GetValue<string>() is string spec
+                            && (spec.StartsWith("file:", StringComparison.OrdinalIgnoreCase) || spec.StartsWith("link:", StringComparison.OrdinalIgnoreCase)))
+                            dependencies.Remove(name);
+                        log?.Invoke("跳过无法迁移的插件 " + name + "：" + exception.Message);
+                    }
+                }
+                if (manifest["dsh"]?["profile"]?["bundles"] is JsonArray bundles)
+                    for (int index = bundles.Count - 1; index >= 0; index--)
+                        if (unavailable.Contains(bundles[index]?.GetValue<string>() ?? String.Empty)) bundles.RemoveAt(index);
+                string manifestRelative = pluginProfilePrefix + "/package.json";
+                string manifestText = manifest.ToJsonString(new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+                long manifestBytes = System.Text.Encoding.UTF8.GetByteCount(manifestText);
+                foreach (ExportItem item in items.Where(item => String.Equals(item.Source, manifestFile, StringComparison.OrdinalIgnoreCase)))
+                {
+                    bytes += manifestBytes - new FileInfo(manifestFile).Length;
+                    item.Content = manifestText;
+                }
+                if (seen.Add(manifestRelative))
+                {
+                    items.Add(new ExportItem { Relative = manifestRelative, Content = manifestText });
+                    bytes += manifestBytes;
+                }
+            }
+        }
+
+        private static void MaterializePlugin(string path, string relative, string home, string root,
+            List<ExportItem> items, HashSet<string> seen, HashSet<string> ancestors, ref long bytes, CancellationToken token)
+        {
+            token.ThrowIfCancellationRequested();
+            FileSystemInfo info = Directory.Exists(path) ? (FileSystemInfo)new DirectoryInfo(path) : new FileInfo(path);
+            if ((info.Attributes & FileAttributes.ReparsePoint) != 0)
+                path = info.ResolveLinkTarget(true)?.FullName ?? throw new IOException("插件链接无法解析：" + path);
+            string full = Path.GetFullPath(path);
+            bool Inside(string candidate) => full.StartsWith(Path.TrimEndingDirectorySeparator(Path.GetFullPath(candidate))
+                + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+            if (!Inside(home) && !Inside(Path.Combine(root, "plugins")))
+                throw new IOException("插件链接指向所选数据目录之外，无法完整备份：" + path);
+            if (Directory.Exists(full))
+            {
+                if (!ancestors.Add(full)) throw new IOException("插件目录包含循环链接：" + relative);
+                foreach (string child in Directory.EnumerateFileSystemEntries(full))
+                    MaterializePlugin(child, relative + "/" + Path.GetFileName(child), home, root, items, seen, ancestors, ref bytes, token);
+                ancestors.Remove(full);
+            }
+            else if (seen.Add(relative))
+            {
+                items.Add(new ExportItem { Source = full, Relative = relative });
+                bytes += new FileInfo(full).Length;
+            }
+        }
+
+        private sealed class ExportItem
+        {
+            internal string Source, Relative;
+            internal string Content;
+        }
+
+        private static void CollectExportFiles(string root, string archiveRoot, List<ExportItem> files, HashSet<string> seen,
+            ref long bytes,
+            Action<string> log, CancellationToken token)
+        {
+            token.ThrowIfCancellationRequested();
+            FileAttributes rootAttributes = File.GetAttributes(root);
+            if ((rootAttributes & FileAttributes.ReparsePoint) != 0)
+            {
+                log?.Invoke("跳过链接目录：" + root);
+                return;
+            }
+            foreach (string directory in Directory.GetDirectories(root))
+            {
+                token.ThrowIfCancellationRequested();
+                if (archiveRoot.StartsWith(".dsh/profiles", StringComparison.OrdinalIgnoreCase)
+                    || archiveRoot.StartsWith("profiles", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (String.Equals(Path.GetFileName(directory), "node_modules", StringComparison.OrdinalIgnoreCase))
+                    {
+                        log?.Invoke("跳过可重新安装的 profile node_modules：" + directory);
+                        continue;
+                    }
+                }
+                if ((File.GetAttributes(directory) & FileAttributes.ReparsePoint) != 0)
+                {
+                    log?.Invoke("跳过符号链接 / junction：" + directory);
+                    continue;
+                }
+                CollectExportFiles(directory, archiveRoot + "/" + Path.GetFileName(directory), files, seen, ref bytes, log, token);
+            }
+            foreach (string file in Directory.GetFiles(root))
+            {
+                token.ThrowIfCancellationRequested();
+                if ((File.GetAttributes(file) & FileAttributes.ReparsePoint) != 0)
+                {
+                    log?.Invoke("跳过文件链接：" + file);
+                    continue;
+                }
+                var info = new FileInfo(file);
+                string relative = archiveRoot + "/" + Path.GetFileName(file);
+                if (seen.Add(relative))
+                {
+                    files.Add(new ExportItem { Source = file, Relative = relative });
+                    bytes += info.Length;
+                }
+            }
+        }
+
+        private static string DescribePackingLine(string message)
+        {
+            if (String.IsNullOrWhiteSpace(message) || !message.TrimStart().StartsWith("Compressing", StringComparison.OrdinalIgnoreCase)) return null;
+            string path = message.Trim().Substring("Compressing".Length).Trim();
+            try { return Path.GetFileName(path); } catch { return path; }
+        }
+
+        private static string FormatSize(long bytes)
+        {
+            if (bytes >= 1024L * 1024L * 1024L) return (bytes / 1073741824d).ToString("0.00") + " GB";
+            if (bytes >= 1024L * 1024L) return (bytes / 1048576d).ToString("0.0") + " MB";
+            if (bytes >= 1024L) return (bytes / 1024d).ToString("0") + " KB";
+            return bytes + " B";
         }
 
         /// <summary>
@@ -318,7 +574,8 @@ namespace DshInstaller.Shared.Backup
             Action<string, double> report,
             Action<string> log,
             CancellationToken token,
-            out string error)
+            out string error,
+            string dshHome = null)
         {
             error = null;
 
@@ -334,16 +591,25 @@ namespace DshInstaller.Shared.Backup
                 return false;
             }
 
-            string staging = Path.Combine(
-                Path.GetTempPath(),
-                "Dafeiyu-Go-restore-" + Guid.NewGuid().ToString("N"));
+            string staging;
             try
             {
+                staging = Path.Combine(DymArchive.GetWritableCacheRoot(), "restore-" + Guid.NewGuid().ToString("N"));
+            }
+            catch (Exception exception)
+            {
+                error = "无法准备备份恢复目录：" + exception.Message;
+                return false;
+            }
+            try
+            {
+                EnsureNoReparsePoints(dshRoot);
                 if (log != null)
                 {
                     log("正在解包到临时目录:" + staging);
                 }
 
+                string extractionError = null;
                 bool extracted = DymArchive.Extract(
                     archivePath,
                     staging,
@@ -351,19 +617,26 @@ namespace DshInstaller.Shared.Backup
                     {
                         if (report != null)
                         {
-                            report("正在解包备份", percent * 0.3);
+                            if (!Double.IsNaN(percent)) report("正在解包备份 · " + Math.Round(percent) + "%", percent * 0.3);
                         }
                     },
-                    log,
+                    delegate(string message)
+                    {
+                        if (!String.IsNullOrWhiteSpace(message)
+                            && (message.Contains("失败") || message.Contains("拒绝") || message.Contains("不安全")))
+                            extractionError = message;
+                        log?.Invoke(message);
+                    },
                     token);
 
                 if (!extracted)
                 {
-                    error = "备份包解不开(文件可能损坏,或者根本不是 .dym)。";
+                    if (token.IsCancellationRequested) throw new OperationCanceledException(token);
+                    error = extractionError ?? "备份包解不开(文件可能损坏,或者根本不是 .dym)。";
                     return false;
                 }
 
-                return MergeStaging(staging, dshRoot, chosen, policy, ask, report, log, token, out error);
+                return MergeStaging(staging, dshRoot, chosen, policy, ask, report, log, token, out error, dshHome);
             }
             finally
             {
@@ -389,7 +662,8 @@ namespace DshInstaller.Shared.Backup
             Action<string, double> report,
             Action<string> log,
             CancellationToken token,
-            out string error)
+            out string error,
+            string dshHome = null)
         {
             error = null;
 
@@ -409,7 +683,7 @@ namespace DshInstaller.Shared.Backup
             if (groups.Count == 0)
             {
                 // 没说就全搬
-                groups = Describe(dshRoot);
+                groups = DescribeFromArchiveDefinitions();
             }
 
             // 先把每个组要搬的文件列出来(为了能报 "第 3 / 共 12 个")
@@ -417,7 +691,7 @@ namespace DshInstaller.Shared.Backup
             for (int index = 0; index < groups.Count; index++)
             {
                 BackupGroup group = groups[index];
-                foreach (string prefix in group.ArchivePrefixes ?? new[] { group.ArchivePrefix })
+                foreach (string prefix in RestorePrefixes(group, staging))
                 {
                 string sourceRoot = Path.Combine(staging, prefix.Replace('/', Path.DirectorySeparatorChar));
                 if (!Directory.Exists(sourceRoot))
@@ -461,9 +735,9 @@ namespace DshInstaller.Shared.Backup
                 }
 
                 RestoreItem item = items[index];
-                string targetDirectory = Path.Combine(
-                    dshRoot,
-                    item.Prefix.Replace('/', Path.DirectorySeparatorChar));
+                string targetDirectory = String.IsNullOrWhiteSpace(dshHome)
+                    ? Path.Combine(dshRoot, MapTargetPrefix(dshRoot, item.Prefix).Replace('/', Path.DirectorySeparatorChar))
+                    : ResolveDataPath(dshRoot, dshHome, item.Prefix);
                 string target = Path.Combine(targetDirectory, item.Relative);
 
                 if (report != null)
@@ -475,6 +749,7 @@ namespace DshInstaller.Shared.Backup
                         30 + (index + 1) * 70.0 / items.Count);
                 }
 
+                token.ThrowIfCancellationRequested();
                 bool exists = File.Exists(target);
                 ConflictChoice choice = ConflictChoice.Overwrite;
 
@@ -492,6 +767,7 @@ namespace DshInstaller.Shared.Backup
 
                 try
                 {
+                    EnsureNoReparsePoints(target);
                     Directory.CreateDirectory(Path.GetDirectoryName(target));
 
                     if (!exists || choice == ConflictChoice.Overwrite)
@@ -544,20 +820,105 @@ namespace DshInstaller.Shared.Backup
 
         private static void CollectFiles(string root, List<string> found)
         {
-            try
+            if ((File.GetAttributes(root) & FileAttributes.ReparsePoint) != 0)
+                throw new IOException("备份包中的目录链接不能还原：" + root);
+            foreach (string directory in Directory.GetDirectories(root))
             {
-                foreach (string directory in Directory.GetDirectories(root))
-                {
-                    CollectFiles(directory, found);
-                }
-
-                foreach (string file in Directory.GetFiles(root))
-                {
-                    found.Add(file);
-                }
+                CollectFiles(directory, found);
             }
-            catch
+            foreach (string file in Directory.GetFiles(root))
             {
+                if ((File.GetAttributes(file) & FileAttributes.ReparsePoint) != 0)
+                    throw new IOException("备份包中的文件链接不能还原：" + file);
+                found.Add(file);
+            }
+        }
+
+        private static List<BackupGroup> DescribeFromArchiveDefinitions()
+            => Templates.Select(template => ToGroup(template, null)).ToList();
+
+        private static bool IsProfileModulePath(string path) => (path.StartsWith(".dsh/profiles/", StringComparison.OrdinalIgnoreCase)
+            || path.StartsWith("profiles/", StringComparison.OrdinalIgnoreCase)) && path.Contains("/node_modules/", StringComparison.OrdinalIgnoreCase);
+
+        private static bool IsProfileManifestPath(string path) => (path.StartsWith(".dsh/profiles/", StringComparison.OrdinalIgnoreCase)
+            || path.StartsWith("profiles/", StringComparison.OrdinalIgnoreCase))
+            && path.EndsWith("/package.json", StringComparison.OrdinalIgnoreCase);
+
+        private static IEnumerable<string> RestorePrefixes(BackupGroup group, string staging)
+        {
+            foreach (string prefix in group.ArchivePrefixes ?? new[] { group.ArchivePrefix })
+                if (prefix != ".dsh/plugin-profiles") yield return prefix;
+            if (group.Id != GroupPlugins) yield break;
+            string root = ".dsh/plugin-profiles";
+            string profiles = Path.Combine(staging, root.Replace('/', Path.DirectorySeparatorChar));
+            if (!Directory.Exists(profiles)) yield break;
+            foreach (string profile in Directory.GetDirectories(profiles))
+            {
+                yield return root + "/" + Path.GetFileName(profile);
+            }
+        }
+
+        private static bool IsDymPluginProfilePath(string path)
+            => path.StartsWith(".dsh/plugin-profiles/", StringComparison.OrdinalIgnoreCase);
+
+        private static string MapTargetPrefix(string root, string prefix)
+        {
+            string normalized = prefix.Replace('\\', '/');
+            if (normalized.StartsWith(".dsh/plugin-profiles/", StringComparison.OrdinalIgnoreCase))
+            {
+                string profile = normalized.Substring(".dsh/plugin-profiles/".Length).Split('/')[0];
+                bool officialHome = Directory.Exists(Path.Combine(root, "profiles"))
+                    && !Directory.Exists(Path.Combine(root, ".dsh", "profiles"));
+                return (officialHome ? "profiles/" : ".dsh/profiles/") + profile;
+            }
+            string portableHome = Path.Combine(root, ".dsh");
+            bool targetLooksLikeHome = Directory.Exists(Path.Combine(root, "profiles"))
+                && !Directory.Exists(Path.Combine(portableHome, "profiles"));
+            if (targetLooksLikeHome && normalized.StartsWith(".dsh/", StringComparison.OrdinalIgnoreCase))
+                return normalized.Substring(5);
+            if (!targetLooksLikeHome && normalized == "profiles"
+                && (Directory.Exists(portableHome) || !Directory.Exists(Path.Combine(root, "profiles")))) return ".dsh/profiles";
+            if (!targetLooksLikeHome && (normalized == "storages" || normalized == "sessions")
+                && (Directory.Exists(portableHome) || !Directory.Exists(Path.Combine(root, "profiles")))) return ".dsh/" + normalized;
+            return normalized;
+        }
+
+        private static string ResolveDataPath(string root, string home, string prefix)
+        {
+            if (prefix.StartsWith(".dsh/plugin-profiles/", StringComparison.OrdinalIgnoreCase))
+            {
+                if (!String.IsNullOrWhiteSpace(home))
+                    return Path.Combine(home, "profiles", prefix.Substring(".dsh/plugin-profiles/".Length).Replace('/', Path.DirectorySeparatorChar));
+                return Path.Combine(root, MapTargetPrefix(root, prefix).Replace('/', Path.DirectorySeparatorChar));
+            }
+            if (!String.IsNullOrWhiteSpace(home))
+            {
+                if (prefix.StartsWith(".dsh/", StringComparison.OrdinalIgnoreCase))
+                    return Path.Combine(home, prefix.Substring(5).Replace('/', Path.DirectorySeparatorChar));
+                if (prefix == "profiles" || prefix == "storages" || prefix == "sessions")
+                    return Path.Combine(home, prefix);
+                return Path.Combine(root, prefix.Replace('/', Path.DirectorySeparatorChar));
+            }
+            string path = Path.Combine(root, prefix.Replace('/', Path.DirectorySeparatorChar));
+            if (!Directory.Exists(path) && prefix.StartsWith(".dsh/", StringComparison.OrdinalIgnoreCase)
+                && Directory.Exists(Path.Combine(root, "profiles")))
+                path = Path.Combine(root, prefix.Substring(5).Replace('/', Path.DirectorySeparatorChar));
+            return path;
+        }
+
+        private static void EnsureNoReparsePoints(string path)
+        {
+            string current = Path.GetFullPath(path);
+            while (!String.IsNullOrEmpty(current))
+            {
+                try
+                {
+                    if ((File.GetAttributes(current) & FileAttributes.ReparsePoint) != 0)
+                        throw new IOException("目标目录包含符号链接或 junction，已停止以免覆盖到其他位置：" + current);
+                }
+                catch (FileNotFoundException) { }
+                catch (DirectoryNotFoundException) { }
+                current = Path.GetDirectoryName(current);
             }
         }
 

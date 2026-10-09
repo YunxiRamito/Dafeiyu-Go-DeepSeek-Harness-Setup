@@ -1363,6 +1363,11 @@ namespace DshInstaller
 
             IWizardPage page = _contentFrame.Content as IWizardPage;
             _nextButton.IsEnabled = page == null || page.CanGoNext;
+            IWizardPageCloseGuard closeGuard = page as IWizardPageCloseGuard;
+            if (_closeButton != null && (closeGuard == null || closeGuard.CanClose))
+            {
+                _closeButton.IsEnabled = true;
+            }
 
             // 页面自带动作按钮(例如进度页的"取消")就显示出来,盖在 Next 的位置上
             _footerAction = _contentFrame.Content as IWizardPageFooterAction;

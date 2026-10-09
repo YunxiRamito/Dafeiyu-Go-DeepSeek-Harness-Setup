@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -18,6 +19,7 @@ namespace DshInstaller.Shared.Backup
         public long Size { get; set; }
 
         public bool IsDirectory { get; set; }
+        public bool IsLink { get; set; }
     }
 
     /// <summary>
@@ -59,11 +61,7 @@ namespace DshInstaller.Shared.Backup
 
             try
             {
-                string directory = Path.Combine(
-                    String.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("TEMP"))
-                        ? Path.GetTempPath()
-                        : Environment.GetEnvironmentVariable("TEMP"),
-                    "Dafeiyu-Go");
+                string directory = Path.Combine(GetWritableCacheRoot(), "Tools");
                 Directory.CreateDirectory(directory);
 
                 string target = Path.Combine(directory, "7zr.exe");
@@ -104,6 +102,33 @@ namespace DshInstaller.Shared.Backup
                 error = "释放 7z 工具失败:" + exception.Message;
                 return null;
             }
+        }
+
+        internal static string GetWritableCacheRoot()
+        {
+            var candidates = new List<string>();
+            string local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            if (!String.IsNullOrWhiteSpace(local)) candidates.Add(Path.Combine(local, "DeepSeekHarness", "BackupWork"));
+            string temp = Environment.GetEnvironmentVariable("TEMP");
+            if (String.IsNullOrWhiteSpace(temp))
+            {
+                try { temp = Path.GetTempPath(); } catch { }
+            }
+            if (!String.IsNullOrWhiteSpace(temp)) candidates.Add(Path.Combine(temp, "Dafeiyu-Go", "BackupWork"));
+            foreach (string candidate in candidates.Distinct(StringComparer.OrdinalIgnoreCase))
+            {
+                try
+                {
+                    Directory.CreateDirectory(candidate);
+                    string probe = Path.Combine(candidate, ".write-test-" + Guid.NewGuid().ToString("N"));
+                    using (new FileStream(probe, FileMode.CreateNew, FileAccess.Write, FileShare.None)) { }
+                    File.Delete(probe);
+                    return candidate;
+                }
+                catch { }
+            }
+            throw new IOException("无法创建备份临时目录。请检查本机应用数据目录和 TEMP 目录的权限。尝试过："
+                + String.Join("；", candidates));
         }
 
         /// <summary>读出压缩包里的条目(不解包)。读不到就返回空列表并给出原因。</summary>
@@ -204,6 +229,12 @@ namespace DshInstaller.Shared.Backup
                 {
                     current.IsDirectory = value.IndexOf('D') >= 0;
                 }
+                else if (current != null
+                    && (String.Equals(key, "Symbolic Link", StringComparison.Ordinal)
+                        || String.Equals(key, "Hard Link", StringComparison.Ordinal)))
+                {
+                    current.IsLink = !String.IsNullOrWhiteSpace(value);
+                }
             }
 
             if (current != null && !String.IsNullOrWhiteSpace(current.Path))
@@ -227,6 +258,7 @@ namespace DshInstaller.Shared.Backup
             CancellationToken token,
             bool append = false)
         {
+            token.ThrowIfCancellationRequested();
             if (String.IsNullOrWhiteSpace(archive))
             {
                 return false;
@@ -249,6 +281,8 @@ namespace DshInstaller.Shared.Backup
                 return false;
             }
 
+            string temporaryArchive = null;
+            string listFile = null;
             try
             {
                 string directory = Path.GetDirectoryName(archive);
@@ -257,13 +291,17 @@ namespace DshInstaller.Shared.Backup
                     Directory.CreateDirectory(directory);
                 }
 
-                if (!append && File.Exists(archive))
-                {
-                    File.Delete(archive);
-                }
+                temporaryArchive = archive + ".partial-" + Guid.NewGuid().ToString("N");
+                if (append && File.Exists(archive)) File.Copy(archive, temporaryArchive, false);
+                listFile = Path.Combine(GetWritableCacheRoot(), "dym-input-" + Guid.NewGuid().ToString("N") + ".txt");
+                using (var writer = new StreamWriter(listFile, false, new UTF8Encoding(false)))
+                    for (int index = 0; index < sourcePaths.Count; index++)
+                        if (!String.IsNullOrWhiteSpace(sourcePaths[index])) writer.WriteLine("\"" + sourcePaths[index] + "\"");
             }
             catch (Exception exception)
             {
+                TryDelete(temporaryArchive);
+                TryDelete(listFile);
                 if (log != null)
                 {
                     log("准备备份文件失败:" + exception.Message);
@@ -274,21 +312,10 @@ namespace DshInstaller.Shared.Backup
 
             StringBuilder arguments = new StringBuilder();
             arguments.Append("a -t7z -mx=5 -bsp1 -bb1 -sccUTF-8 -y \"");
-            arguments.Append(archive);
+            arguments.Append(temporaryArchive);
+            arguments.Append("\" -scsUTF-8 @\"");
+            arguments.Append(listFile);
             arguments.Append('"');
-
-            for (int index = 0; index < sourcePaths.Count; index++)
-            {
-                string path = sourcePaths[index];
-                if (String.IsNullOrWhiteSpace(path))
-                {
-                    continue;
-                }
-
-                arguments.Append(" \"");
-                arguments.Append(path);
-                arguments.Append('"');
-            }
 
             ProcessResult result = RunProcess(
                 tool,
@@ -305,10 +332,34 @@ namespace DshInstaller.Shared.Backup
                     log(DescribeFailure("打包失败", result));
                 }
 
+                TryDelete(temporaryArchive);
+                TryDelete(listFile);
                 return false;
             }
-
-            return File.Exists(archive);
+            TryDelete(listFile);
+            try
+            {
+                if (token.IsCancellationRequested)
+                {
+                    TryDelete(temporaryArchive);
+                    return false;
+                }
+                if (!File.Exists(temporaryArchive)) return false;
+                if (File.Exists(archive))
+                {
+                    string replaced = archive + ".previous-" + Guid.NewGuid().ToString("N");
+                    try { File.Replace(temporaryArchive, archive, replaced); }
+                    finally { TryDelete(replaced); }
+                }
+                else File.Move(temporaryArchive, archive);
+                return true;
+            }
+            catch (Exception exception)
+            {
+                if (log != null) log("提交备份文件失败，原有备份已保留：" + exception.Message);
+                TryDelete(temporaryArchive);
+                return false;
+            }
         }
 
         /// <summary>解包到 destination(不存在会自动建)。</summary>
@@ -327,6 +378,26 @@ namespace DshInstaller.Shared.Backup
                 }
 
                 return false;
+            }
+
+            string listingError;
+            List<DymEntry> archiveEntries = List(archive, log, out listingError);
+            if (!String.IsNullOrWhiteSpace(listingError))
+            {
+                if (log != null) log("读取备份目录失败：" + listingError);
+                return false;
+            }
+            foreach (DymEntry entry in archiveEntries)
+            {
+                string normalized = (entry.Path ?? String.Empty).Replace('\\', '/');
+                string[] segments = normalized.Split('/');
+                if (entry.IsLink || normalized.StartsWith("/", StringComparison.Ordinal)
+                    || normalized.StartsWith("//", StringComparison.Ordinal)
+                    || normalized.Contains(':') || segments.Any(segment => segment == ".."))
+                {
+                    if (log != null) log("备份包包含不安全路径或链接，已拒绝解包：" + entry.Path);
+                    return false;
+                }
             }
 
             string error;
@@ -542,6 +613,7 @@ namespace DshInstaller.Shared.Backup
                         }
                     }
 
+                    process.WaitForExit();
                     result.ExitCode = process.ExitCode;
                 }
 
@@ -576,19 +648,22 @@ namespace DshInstaller.Shared.Backup
                 buffer.AppendLine(trimmed);
             }
 
-            if (log == null)
-            {
-                return;
-            }
-
             // -bb1 会把每个文件打出来("Extracting  xxx"),这行交给界面,
             // 用户就能看到"正在恢复哪个文件"而不是一个干巴巴的百分比。
             if (trimmed.StartsWith("Extracting", StringComparison.OrdinalIgnoreCase)
                 || trimmed.StartsWith("Compressing", StringComparison.OrdinalIgnoreCase)
                 || trimmed.StartsWith("Add new data", StringComparison.OrdinalIgnoreCase))
             {
-                log(trimmed);
+                log?.Invoke(trimmed);
+                if (report != null) report(trimmed, Double.NaN);
             }
+        }
+
+        private static void TryDelete(string path)
+        {
+            if (String.IsNullOrWhiteSpace(path)) return;
+            try { if (File.Exists(path)) File.Delete(path); }
+            catch { }
         }
     }
 }
