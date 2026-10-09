@@ -1,5 +1,11 @@
 # 交接:大肥鱼Go / Dafeiyu-Go
 
+## 2026-10-09 14:45 v1.7.2 已发布（本节优先）
+
+- Release：`https://github.com/YunxiRamito/Dafeiyu-Go-DeepSeek-Harness-Setup/releases/tag/v1.7.2`（id `407608613`，tag v1.7.2 → `f521582`）。
+- 资产：`DSH-Installer-Setup.exe`，11,474,701 字节（文件版本 1.7.2.0），SHA-256 `AEF9BF3DA0E2DB32A4F28A0DBD2C270C16352590C3DD5AC822C18D74B8E693F7`（用户提供的本地构建）。
+- `.gitignore` 补了 `dist-*/`，避免 60 MB 级构建目录进仓库；tag CI run `37895223168` 已取消。
+
 ## 2026-10-09 00:10 v1.7.1 已发布（本节优先）
 
 - Release：`https://github.com/YunxiRamito/Dafeiyu-Go-DeepSeek-Harness-Setup/releases/tag/v1.7.1`（id `407026440`，tag v1.7.1 → `2cc0c0d`）。
