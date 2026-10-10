@@ -1,5 +1,13 @@
 # 交接:大肥鱼Go / Dafeiyu-Go
 
+## 2026-10-10 12:40 v1.7.3 已发布（本节优先）
+
+- Release：`https://github.com/YunxiRamito/Dafeiyu-Go-DeepSeek-Harness-Setup/releases/tag/v1.7.3`（id `408645721`，tag v1.7.3 → `07e0555`）。
+- 资产：`DSH-Installer-Setup.exe`，11,476,468 字节，SHA-256 `8510DE228A5F601AD77FB402C79CAB765088ECA750E500D9EAB57DE29FE803D3`，FileVersion `1.7.3.0`（本地 `pack-release.ps1 -NoDesktop` 构建）。
+- 版本号改动：`Directory.Build.props`（InstallerVersion `1.7.3` / InstallerVersionFull `1.7.3.0` / LauncherVersion `1.7.3`）与 `src/DshInstaller/app.manifest`（`1.7.3.0`）。原因：用户附带的 EXE 版本资源仍是 `1.7.2.0`，而本次发布 tag 是 v1.7.3；启动器按「Release 版本 vs 本机记录的安装器版本」判断更新，版本资源对不上会让新装用户被反复提示安装器更新。用户选择升版本号重编。
+- 更新日志新增 `## [1.7.3] - 2026-10-10`（用户给的合并文案）；`.gitignore` 补了 `dist-*/` 与 `.build-temp/`。
+- tag CI run `38024496442` 已取消，避免 CI 产物覆盖 Release 资产。
+
 ## 2026-10-09 14:45 v1.7.2 已发布（本节优先）
 
 - Release：`https://github.com/YunxiRamito/Dafeiyu-Go-DeepSeek-Harness-Setup/releases/tag/v1.7.2`（id `407608613`，tag v1.7.2 → `f521582`）。
