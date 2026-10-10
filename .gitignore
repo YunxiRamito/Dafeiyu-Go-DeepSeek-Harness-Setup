@@ -15,6 +15,7 @@ payload/*.zip
 
 # 构建产物与临时备份
 artifacts/
+.build-temp/
 *.bak
 *.bak2
 *.old

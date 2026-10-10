@@ -9,7 +9,8 @@ namespace DshInstaller.Shared.Install
     {
         public static string ResolvePackageSpecifier(string source, bool backend)
         {
-            if (!backend || String.IsNullOrWhiteSpace(source)) return source;
+            if (String.IsNullOrWhiteSpace(source)) return source;
+            if (!backend) return OriginalPackageSpecifier(source);
             string prefix = String.Empty;
             string value = source.Trim();
             int alias = value.IndexOf("@github:", StringComparison.OrdinalIgnoreCase);
@@ -29,6 +30,21 @@ namespace DshInstaller.Shared.Install
             if (path.EndsWith(".git", StringComparison.OrdinalIgnoreCase)) path = path.Substring(0, path.Length - 4);
             if (!System.Text.RegularExpressions.Regex.IsMatch(path, @"^[A-Za-z0-9_-]+/[A-Za-z0-9_.-]+$")) return source;
             return prefix + "git+" + BackendDownloadSource.BaseUrl + "/api/git/" + path + ".git" + reference;
+        }
+
+        public static string OriginalPackageSpecifier(string source)
+        {
+            string prefix = "git+" + BackendDownloadSource.BaseUrl + "/api/git/";
+            if (source == null) return source;
+            int alias = source.IndexOf("@" + prefix, StringComparison.OrdinalIgnoreCase);
+            if (alias > 0) return source.Substring(0, alias + 1) + OriginalPackageSpecifier(source.Substring(alias + 1));
+            if (!source.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) return source;
+            string path = source.Substring(prefix.Length);
+            int hash = path.IndexOf('#');
+            string reference = hash < 0 ? String.Empty : path.Substring(hash);
+            path = hash < 0 ? path : path.Substring(0, hash);
+            if (path.EndsWith(".git", StringComparison.OrdinalIgnoreCase)) path = path.Substring(0, path.Length - 4);
+            return "github:" + path + reference;
         }
 
         public static Dictionary<string, string> Create(string sourcePreference)

@@ -127,6 +127,15 @@ namespace DshInstaller.Shared.Install
             long minimumSize,
             int segmentCount)
         {
+            using CancellationTokenSource stop = new CancellationTokenSource();
+            using Timer monitor = new Timer(_ =>
+            {
+                try { if (cancellation != null && cancellation()) stop.Cancel(); }
+                catch (ObjectDisposedException) { }
+            }, null, 0, 100);
+            List<Task<bool>> workers = new List<Task<bool>>();
+            List<string> parts = new List<string>();
+            string mergedPath = null;
             try
             {
                 if (urls == null || urls.Count == 0 || string.IsNullOrEmpty(targetPath))
@@ -165,7 +174,7 @@ namespace DshInstaller.Shared.Install
                 long total = 0;
 
                 long firstLength;
-                RangeSupport firstSupport = ProbeRange(urls[0], ProbeTimeout, out firstLength);
+                RangeSupport firstSupport = ProbeRange(urls[0], ProbeTimeout, stop.Token, out firstLength);
                 if (firstSupport == RangeSupport.Yes && firstLength >= minimumSize)
                 {
                     chosen = urls[0];
@@ -188,7 +197,8 @@ namespace DshInstaller.Shared.Install
                     for (int index = 1; index < urls.Count; index++)
                     {
                         long length;
-                        RangeSupport support = ProbeRange(urls[index], LookaheadProbeTimeout, out length);
+                        if (stop.IsCancellationRequested) return false;
+                        RangeSupport support = ProbeRange(urls[index], LookaheadProbeTimeout, stop.Token, out length);
 
                         if (support == RangeSupport.Yes && length >= minimumSize)
                         {
@@ -240,7 +250,6 @@ namespace DshInstaller.Shared.Install
 
                 long chunk = total / segmentCount;
                 long[] received = new long[segmentCount];
-                string[] parts = new string[segmentCount];
 
                 for (int i = 0; i < segmentCount; i++)
                 {
@@ -248,30 +257,27 @@ namespace DshInstaller.Shared.Install
                     long end = (i == segmentCount - 1) ? total - 1 : (start + chunk - 1);
 
                     string part = targetPath + ".seg" + i.ToString();
-                    parts[i] = part;
+                    parts.Add(part);
 
                     int index = i;
                     long from = start;
                     long to = end;
 
-                    Task.Run(delegate
+                    workers.Add(Task.Run(delegate
                     {
                         for (int attempt = 0; attempt < SegmentAttempts; attempt++)
                         {
+                            if (stop.IsCancellationRequested) return false;
                             string url = sources[attempt % sources.Count];
-                            if (Fetch(url, from, to, part, received, index, cancellation))
+                            if (Fetch(url, from, to, part, received, index, stop.Token))
                             {
-                                return;
+                                return true;
                             }
 
-                            if (cancellation != null && cancellation())
-                            {
-                                return;
-                            }
-
-                            Thread.Sleep(600);
+                            if (stop.Token.WaitHandle.WaitOne(600)) return false;
                         }
-                    });
+                        return false;
+                    }));
                 }
 
                 // 2) 边等边报进度
@@ -295,7 +301,7 @@ namespace DshInstaller.Shared.Install
 
                 while (true)
                 {
-                    if (cancellation != null && cancellation())
+                    if (stop.IsCancellationRequested)
                     {
                         return false;
                     }
@@ -306,8 +312,9 @@ namespace DshInstaller.Shared.Install
                         done += Interlocked.Read(ref received[i]);
                     }
 
-                    if (done >= total)
+                    if (workers.TrueForAll(worker => worker.IsCompleted))
                     {
+                        if (workers.Exists(worker => !worker.GetAwaiter().GetResult())) return false;
                         break;
                     }
 
@@ -396,11 +403,13 @@ namespace DshInstaller.Shared.Install
                 }
 
                 // 3) 合并
-                using (FileStream output = new FileStream(targetPath, FileMode.Create, FileAccess.Write,
+                mergedPath = targetPath + ".merge-" + Guid.NewGuid().ToString("N");
+                using (FileStream output = new FileStream(mergedPath, FileMode.CreateNew, FileAccess.Write,
                     FileShare.None, 256 * 1024))
                 {
                     for (int i = 0; i < segmentCount; i++)
                     {
+                        stop.Token.ThrowIfCancellationRequested();
                         if (!File.Exists(parts[i]))
                         {
                             return false;
@@ -414,22 +423,14 @@ namespace DshInstaller.Shared.Install
                 }
 
                 // 4) 校验大小
-                long size = new FileInfo(targetPath).Length;
+                long size = new FileInfo(mergedPath).Length;
                 if (size != total)
                 {
                     return false;
                 }
 
-                for (int i = 0; i < segmentCount; i++)
-                {
-                    try
-                    {
-                        File.Delete(parts[i]);
-                    }
-                    catch
-                    {
-                    }
-                }
+                stop.Token.ThrowIfCancellationRequested();
+                File.Move(mergedPath, targetPath, true);
 
                 if (progress != null)
                 {
@@ -455,6 +456,22 @@ namespace DshInstaller.Shared.Install
             {
                 return false;
             }
+            finally
+            {
+                // Close every writer before fallback starts or temporary files are removed.
+                stop.Cancel();
+                try { Task.WaitAll(workers.ToArray()); }
+                catch (AggregateException) { }
+                foreach (string part in parts) DeleteTemporary(part);
+                DeleteTemporary(mergedPath);
+            }
+        }
+
+        private static void DeleteTemporary(string path)
+        {
+            if (String.IsNullOrEmpty(path)) return;
+            try { File.Delete(path); }
+            catch (Exception exception) { InstallLogger.Write("分段下载临时文件清理失败:" + path + " : " + exception.Message); }
         }
 
         /// <summary>探测一个候选:支不支持分段。</summary>
@@ -477,7 +494,7 @@ namespace DshInstaller.Shared.Install
         /// "这条慢但能用"(该走单连接)和"这条是坏的"(该往后找别的候选),
         /// 而这两件事的处理方式完全相反。以前就是混着来的(实测吃过亏)。
         /// </summary>
-        private static RangeSupport ProbeRange(string url, TimeSpan timeout, out long length)
+        private static RangeSupport ProbeRange(string url, TimeSpan timeout, CancellationToken cancellation, out long length)
         {
             length = 0;
 
@@ -485,9 +502,10 @@ namespace DshInstaller.Shared.Install
             {
                 // 限时:探测失败就当"这条不行",原样回落单连接 ——
                 // 比在这里挂半小时强得多
-                using (CancellationTokenSource limited = new CancellationTokenSource(timeout))
+                using (CancellationTokenSource limited = CancellationTokenSource.CreateLinkedTokenSource(cancellation))
                 using (HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Get, url))
                 {
+                    limited.CancelAfter(timeout);
                     request.Headers.Range = new RangeHeaderValue(0, 0);
 
                     using (HttpResponseMessage response = Client
@@ -522,22 +540,27 @@ namespace DshInstaller.Shared.Install
         private static bool Fetch(
             string url, long start, long end, string partPath,
             long[] received, int index,
-            Func<bool> cancellation)
+            CancellationToken cancellation)
         {
+            long written = 0;
+            bool complete = false;
             try
             {
+                using (CancellationTokenSource requestTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellation))
                 using (HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Get, url))
                 {
                     request.Headers.Range = new RangeHeaderValue(start, end);
+                    requestTimeout.CancelAfter(ProbeTimeout);
 
                     using (HttpResponseMessage response = Client
-                        .SendAsync(request, HttpCompletionOption.ResponseHeadersRead)
+                        .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, requestTimeout.Token)
                         .GetAwaiter().GetResult())
                     {
                         if (response.StatusCode != System.Net.HttpStatusCode.PartialContent)
                         {
                             return false;
                         }
+                        requestTimeout.CancelAfter(Timeout.InfiniteTimeSpan);
                         if (BackendDownloadSource.IsBackendUrl(url))
                         {
                             var returnedRange = response.Content.Headers.ContentRange;
@@ -545,22 +568,19 @@ namespace DshInstaller.Shared.Install
                                 || response.Content.Headers.ContentEncoding.Count != 0) return false;
                         }
 
-                        using (Stream remote = response.Content.ReadAsStreamAsync().GetAwaiter().GetResult())
+                        using (Stream remote = response.Content.ReadAsStreamAsync(cancellation).GetAwaiter().GetResult())
                         using (FileStream local = new FileStream(partPath, FileMode.Create, FileAccess.Write,
                             FileShare.None, 128 * 1024))
                         {
                             byte[] buffer = new byte[128 * 1024];
-                            long written = 0;
                             long expected = end - start + 1;
 
                             while (written < expected)
                             {
-                                if (cancellation != null && cancellation())
-                                {
-                                    return false;
-                                }
+                                cancellation.ThrowIfCancellationRequested();
 
-                                int read = remote.Read(buffer, 0, (int)Math.Min(buffer.Length, expected - written));
+                                int read = remote.ReadAsync(buffer, 0, (int)Math.Min(buffer.Length, expected - written), cancellation)
+                                    .GetAwaiter().GetResult();
                                 if (read <= 0)
                                 {
                                     break;
@@ -574,18 +594,22 @@ namespace DshInstaller.Shared.Install
                             if (written < expected)
                             {
                                 // 这一段没拉完 —— 把计数退回去,重试时重新拉
-                                Interlocked.Add(ref received[index], -written);
                                 return false;
                             }
                         }
                     }
                 }
 
+                complete = true;
                 return true;
             }
             catch
             {
                 return false;
+            }
+            finally
+            {
+                if (!complete) Interlocked.Add(ref received[index], -written);
             }
         }
 

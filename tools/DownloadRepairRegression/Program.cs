@@ -6,6 +6,9 @@ using System.Net.Http;
 using System.Net.Sockets;
 using System.Reflection;
 using System.Text;
+using System.Collections.Concurrent;
+using System.Globalization;
+using System.Runtime.InteropServices;
 using DshInstaller.Shared;
 using DshInstaller.Shared.Install;
 
@@ -13,10 +16,22 @@ internal static class Program
 {
     private static int _checks;
     private static readonly Assembly Shared = typeof(DownloadEngine).Assembly;
-    private static readonly string Root = Path.Combine(AppContext.BaseDirectory, "sandbox-" + Guid.NewGuid().ToString("N"));
+    private static readonly string FixtureRoot = Path.GetFullPath(
+        Environment.GetEnvironmentVariable("DAFEIYU_INSTALLER_TEMP_ROOT") ?? Path.GetTempPath());
+    private static readonly string Root = Path.Combine(FixtureRoot, "download-repair-" + Guid.NewGuid().ToString("N"));
 
     private static int Main()
     {
+        if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("DAFEIYU_INSTALLER_TEMP_ROOT")))
+        {
+            Console.Error.WriteLine("DAFEIYU_INSTALLER_TEMP_ROOT must point to the required G: temporary directory.");
+            return 2;
+        }
+        if (!string.Equals(Path.GetPathRoot(FixtureRoot), "G:\\", StringComparison.OrdinalIgnoreCase))
+        {
+            Console.Error.WriteLine("Regression fixtures must be rooted on G:, got " + FixtureRoot);
+            return 2;
+        }
         Directory.CreateDirectory(Root);
         Environment.SetEnvironmentVariable("DAFEIYU_INSTALLER_SETTINGS_DIRECTORY", Path.Combine(Root, "settings"));
         ProxySupport.Current = new ProxySettings { Mode = "None" };
@@ -27,6 +42,7 @@ internal static class Program
             ProgressText();
             HttpFallback();
             WrappedArchiveFallback();
+            SegmentedDownload();
             CrossVolume();
             Console.WriteLine($"PASS {_checks} installation download repair checks");
             return 0;
@@ -127,11 +143,24 @@ internal static class Program
 
     private static void CrossVolume()
     {
-        string source = Path.Combine(Path.GetTempPath(), "dafeiyu-node-test-" + Guid.NewGuid().ToString("N"));
+        string aliasTarget = Path.Combine(Root, "subst-volume");
+        Directory.CreateDirectory(aliasTarget);
+        string? drive = null;
+        try { drive = CreateSubstAlias(aliasTarget); }
+        catch (IOException error)
+        {
+            Console.WriteLine("SKIP physical cross-volume deployment: G:-backed SUBST alias unavailable (" + error.Message.Trim() + ")");
+            SameVolumeDeployment();
+            return;
+        }
+        string source = Path.Combine(drive + Path.DirectorySeparatorChar, "node-source");
         string target = Path.Combine(Root, "node");
         try
         {
-            Check(!string.Equals(Path.GetPathRoot(source), Path.GetPathRoot(target), StringComparison.OrdinalIgnoreCase), "test uses distinct C and G volumes");
+            string physicalSource = Path.Combine(aliasTarget, "node-source");
+            Check(!string.Equals(Path.GetPathRoot(source), Path.GetPathRoot(target), StringComparison.OrdinalIgnoreCase),
+                "cross-volume branch exercised through a G:-backed SUBST alias");
+            Check(IsWithin(Root, physicalSource) && IsWithin(Root, target), "cross-volume fixture remains physically under configured G: temp root");
             Directory.CreateDirectory(Path.Combine(source, "node_modules", "npm"));
             Directory.CreateDirectory(Path.Combine(source, "empty"));
             File.WriteAllText(Path.Combine(source, "node.exe"), "node-fixture");
@@ -153,7 +182,105 @@ internal static class Program
             try { Move("relative", Path.Combine(Root, "relative")); throw new Exception("Missing absolute guard"); }
             catch (ArgumentException) { Check(true, "relative deployment path rejected"); }
         }
-        finally { if (Directory.Exists(source)) Directory.Delete(source, true); }
+        finally
+        {
+            if (Directory.Exists(source)) Directory.Delete(source, true);
+            RemoveSubstAlias(drive, aliasTarget);
+            if (Directory.Exists(aliasTarget)) Directory.Delete(aliasTarget, true);
+        }
+    }
+
+    private static void SameVolumeDeployment()
+    {
+        string source = Path.Combine(Root, "same-volume-source");
+        string target = Path.Combine(Root, "same-volume-node");
+        Directory.CreateDirectory(source);
+        File.WriteAllText(Path.Combine(source, "node.exe"), "node-fixture");
+        Move(source, target);
+        Check(File.ReadAllText(Path.Combine(target, "node.exe")) == "node-fixture", "same-volume fallback node deployed");
+        Check(!Directory.Exists(source), "same-volume fallback source moved");
+        Directory.CreateDirectory(source);
+        try { Move(source, Path.Combine(Root, "same-volume-canceled"), new CancellationToken(true)); throw new Exception("Missing cancellation"); }
+        catch (OperationCanceledException) { Check(Directory.Exists(source), "canceled deployment preserves G: source"); }
+        Check(!Directory.Exists(Path.Combine(Root, "same-volume-canceled")), "canceled deployment exposes no G: target");
+        try { Move(source, target); throw new Exception("Missing target guard"); }
+        catch (IOException) { Check(File.ReadAllText(Path.Combine(target, "node.exe")) == "node-fixture", "existing G: target preserved"); }
+        try { Move("relative", Path.Combine(Root, "relative")); throw new Exception("Missing absolute guard"); }
+        catch (ArgumentException) { Check(true, "relative deployment path rejected"); }
+    }
+
+    private static string CreateSubstAlias(string target)
+    {
+        var occupied = new HashSet<char>(DriveInfo.GetDrives().Select(drive => char.ToUpperInvariant(drive.Name[0])));
+        foreach (char letter in "DEFGHIJKLMNOPQRSTUVWXYZ")
+        {
+            if (Directory.Exists(letter + ":\\")) occupied.Add(letter);
+        }
+        for (char letter = 'Z'; letter >= 'D'; letter--)
+        {
+            if (occupied.Contains(letter)) continue;
+            string alias = letter + ":";
+            if (!DefineDosDevice(0x00000008, alias, target))
+                throw new IOException("Unable to create process-local drive alias " + alias + ": " + Marshal.GetLastWin32Error());
+            if (Directory.Exists(alias + "\\")) return alias;
+            DefineDosDevice(0x0000000E, alias, target);
+        }
+        throw new IOException("No free drive letter is available for the cross-volume fixture.");
+    }
+
+    private static void RemoveSubstAlias(string alias, string target)
+    {
+        if (string.IsNullOrEmpty(alias)) return;
+        if (!DefineDosDevice(0x0000000E, alias, target))
+            throw new IOException("Unable to remove process-local drive alias " + alias + ": " + Marshal.GetLastWin32Error());
+    }
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern bool DefineDosDevice(uint flags, string deviceName, string targetPath);
+
+    private static bool IsWithin(string root, string path)
+    {
+        string fullRoot = Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+        string fullPath = Path.GetFullPath(path);
+        return fullPath.StartsWith(fullRoot, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static void SegmentedDownload()
+    {
+        using var server = new FixtureServer();
+        var downloader = Shared.GetType("DshInstaller.Shared.Install.SegmentedDownloader")!;
+        var tryDownload = downloader.GetMethods(BindingFlags.Static | BindingFlags.Public)
+            .Single(method => method.Name == "TryDownload" && method.GetParameters().Length == 5);
+        byte[] expected = Enumerable.Range(0, 8 * 1024 * 1024).Select(index => (byte)(index * 31)).ToArray();
+        server.Bodies["/range"] = expected;
+        string target = Path.Combine(Root, "segmented.bin");
+        var notices = new List<string>();
+        bool downloaded = (bool)tryDownload.Invoke(null, new object?[]
+        {
+            new[] { server.Base + "range" }, target, null, (Func<bool>)(() => false), (Action<string>)notices.Add,
+        })!;
+        Check(downloaded, "segmented download completes with Range responses");
+        Check(File.ReadAllBytes(target).SequenceEqual(expected), "segmented output preserves byte ordering and content");
+        Check(server.Ranges.Count >= 9, "segmented download probes and requests all ranges");
+        string[] successfulResidue = Directory.EnumerateFiles(Root)
+            .Where(path => path.StartsWith(target + ".", StringComparison.OrdinalIgnoreCase)).ToArray();
+        if (successfulResidue.Length != 0) Console.WriteLine("segmented residue: " + string.Join(", ", successfulResidue));
+        Check(successfulResidue.Length == 0, "successful segmented download removes segment and merge files");
+
+        server.Bodies["/slow-range"] = expected;
+        var clock = Stopwatch.StartNew();
+        string canceledTarget = Path.Combine(Root, "segmented-canceled.bin");
+        bool canceledResult = (bool)tryDownload.Invoke(null, new object?[]
+        {
+            new[] { server.Base + "slow-range" }, canceledTarget,
+            null, (Func<bool>)(() => clock.ElapsedMilliseconds >= 150), (Action<string>)notices.Add,
+        })!;
+        Check(!canceledResult && clock.Elapsed < TimeSpan.FromSeconds(3), "segmented cancellation stops workers promptly");
+        Check(!File.Exists(canceledTarget), "canceled segmented download exposes no target");
+        string[] canceledResidue = Directory.EnumerateFiles(Root)
+            .Where(path => path.StartsWith(canceledTarget + ".", StringComparison.OrdinalIgnoreCase)).ToArray();
+        if (canceledResidue.Length != 0) Console.WriteLine("canceled segmented residue: " + string.Join(", ", canceledResidue));
+        Check(canceledResidue.Length == 0, "canceled segmented download removes all partial files");
     }
 
     private static void HttpFallback()
@@ -242,8 +369,8 @@ internal static class Program
     {
         private readonly TcpListener _listener = new(IPAddress.Loopback, 0);
         private readonly CancellationTokenSource _stop = new();
-        internal readonly List<string> Requests = new();
-        internal readonly List<string> Ranges = new();
+        internal readonly ConcurrentQueue<string> Requests = new();
+        internal readonly ConcurrentQueue<string> Ranges = new();
         internal readonly Dictionary<string, byte[]> Bodies = new();
         internal string Base { get; }
         internal FixtureServer()
@@ -268,22 +395,61 @@ internal static class Program
                     using var stream = client.GetStream();
                     using var reader = new StreamReader(stream, Encoding.ASCII, leaveOpen: true);
                     string path = (await reader.ReadLineAsync())!.Split(' ')[1];
+                    string? rangeHeader = null;
                     string? line;
                     while (!string.IsNullOrEmpty(line = await reader.ReadLineAsync()))
-                        if (line.StartsWith("Range:", StringComparison.OrdinalIgnoreCase)) Ranges.Add(line);
-                    Requests.Add(path);
+                    {
+                        if (!line.StartsWith("Range:", StringComparison.OrdinalIgnoreCase)) continue;
+                        rangeHeader = line.Substring("Range:".Length).Trim();
+                        Ranges.Enqueue(path + " " + rangeHeader);
+                    }
+                    Requests.Enqueue(path);
                     if (path == "/slow") await Task.Delay(2000, _stop.Token);
                     string body = path == "/good" ? "verified-package" : path == "/text" ? "metadata-fixture" : "invalid-package";
                     byte[] bytes = Bodies.TryGetValue(path, out var supplied) ? supplied : Encoding.UTF8.GetBytes(body);
-                    byte[] header = Encoding.ASCII.GetBytes("HTTP/1.1 200 OK\r\nContent-Length: " + bytes.Length + "\r\nConnection: close\r\n\r\n");
+                    int start = 0;
+                    int end = bytes.Length - 1;
+                    bool partial = (path == "/range" || path == "/slow-range")
+                        && TryParseRange(rangeHeader, bytes.Length, out start, out end);
+                    byte[] responseBytes = partial ? bytes[start..(end + 1)] : bytes;
+                    string status = partial ? "206 Partial Content" : "200 OK";
+                    string range = partial ? "Content-Range: bytes " + start.ToString(CultureInfo.InvariantCulture)
+                        + "-" + end.ToString(CultureInfo.InvariantCulture) + "/" + bytes.Length.ToString(CultureInfo.InvariantCulture) + "\r\n" : string.Empty;
+                    byte[] header = Encoding.ASCII.GetBytes("HTTP/1.1 " + status + "\r\n" + range
+                        + "Content-Length: " + responseBytes.Length + "\r\nConnection: close\r\n\r\n");
                     await stream.WriteAsync(header);
                     if (path == "/slow-body") await Task.Delay(2000, _stop.Token);
-                    await stream.WriteAsync(bytes);
+                    if (path == "/slow-range")
+                    {
+                        for (int offset = 0; offset < responseBytes.Length; offset += 64 * 1024)
+                        {
+                            int count = Math.Min(64 * 1024, responseBytes.Length - offset);
+                            await stream.WriteAsync(responseBytes.AsMemory(offset, count), _stop.Token);
+                            await Task.Delay(25, _stop.Token);
+                        }
+                    }
+                    else
+                    {
+                        await stream.WriteAsync(responseBytes);
+                    }
                 }
                 catch (Exception) when (_stop.IsCancellationRequested) { }
                 catch (IOException) { }
             }
         }
+
+        private static bool TryParseRange(string? value, int totalLength, out int start, out int end)
+        {
+            start = 0;
+            end = totalLength - 1;
+            if (string.IsNullOrWhiteSpace(value) || !value.StartsWith("bytes=", StringComparison.OrdinalIgnoreCase)) return false;
+            string[] bounds = value.Substring("bytes=".Length).Split('-', 2);
+            if (bounds.Length != 2
+                || !int.TryParse(bounds[0], NumberStyles.None, CultureInfo.InvariantCulture, out start)
+                || !int.TryParse(bounds[1], NumberStyles.None, CultureInfo.InvariantCulture, out end)) return false;
+            return start >= 0 && end >= start && end < totalLength;
+        }
+
         public void Dispose() { _stop.Cancel(); _listener.Stop(); _stop.Dispose(); }
     }
 }

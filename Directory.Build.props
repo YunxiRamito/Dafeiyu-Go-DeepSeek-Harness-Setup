@@ -1,11 +1,11 @@
 <Project>
   <PropertyGroup>
-    <InstallerVersion>1.7.2</InstallerVersion>
-    <InstallerVersionFull>1.7.2.0</InstallerVersionFull>
+    <InstallerVersion>1.7.3</InstallerVersion>
+    <InstallerVersionFull>1.7.3.0</InstallerVersionFull>
     <!--
       安装器和启动器独立比对各自更新版本；这里的 LauncherVersion 仅保留构建兼容字段。
     -->
-    <LauncherVersion>1.7.2</LauncherVersion>
+    <LauncherVersion>1.7.3</LauncherVersion>
     <DshPackage>@deepseek-ai/dsh</DshPackage>
     <DshPackageVersion>latest</DshPackageVersion>
     <NodeLtsMajor>22</NodeLtsMajor>

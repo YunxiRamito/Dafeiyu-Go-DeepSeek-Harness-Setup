@@ -216,6 +216,36 @@ namespace DshInstaller.Shared.Install
             bool allowSegmented = true,
             Action<string> validateCompleted = null)
         {
+            if (String.IsNullOrWhiteSpace(targetPath)) throw new ArgumentException("没有下载目标", "targetPath");
+            bool ownsTarget = false;
+            bool completed = false;
+            try
+            {
+                string selected = DownloadCore(urls, targetPath, progress, cancellation, onSourceFailed,
+                    onNotice, allowSegmented, validateCompleted, out ownsTarget);
+                completed = true;
+                return selected;
+            }
+            finally
+            {
+                // Partial bytes belong to one download task, including all of its source retries.
+                DeleteTemporary(targetPath + ".part");
+                if (!completed && ownsTarget) DeleteTemporary(targetPath);
+            }
+        }
+
+        private static string DownloadCore(
+            IList<string> urls,
+            string targetPath,
+            Action<DownloadProgress> progress,
+            Func<bool> cancellation,
+            Func<string, bool> onSourceFailed,
+            Action<string> onNotice,
+            bool allowSegmented,
+            Action<string> validateCompleted,
+            out bool ownsTarget)
+        {
+            ownsTarget = false;
             if (urls == null || urls.Count == 0)
             {
                 throw new ArgumentException("没有下载地址", "urls");
@@ -255,6 +285,8 @@ namespace DshInstaller.Shared.Install
                     cancellation,
                     onNotice))
             {
+                ownsTarget = true;
+                if (cancellation != null && cancellation()) throw new OperationCanceledException();
                 return targetPath;
             }
 
@@ -308,7 +340,12 @@ namespace DshInstaller.Shared.Install
                     BackendDownloadSource.EnsureReady(url, progress, cancellation);
                     if (allowSegmented && (validateCompleted != null || BackendDownloadSource.IsBackendUrl(url))
                         && SegmentedDownloader.TryDownload(new List<string> { url }, targetPath, progress, cancellation, onNotice))
-                    { validateCompleted?.Invoke(targetPath); return url; }
+                    {
+                        ownsTarget = true;
+                        validateCompleted?.Invoke(targetPath);
+                        if (cancellation != null && cancellation()) throw new OperationCanceledException();
+                        return url;
+                    }
                     DownloadOne(
                         url,
                         partialPath,
@@ -367,7 +404,9 @@ namespace DshInstaller.Shared.Install
                     }
 
                     File.Move(partialPath, targetPath);
+                    ownsTarget = true;
                     validateCompleted?.Invoke(targetPath);
+                    if (cancellation != null && cancellation()) throw new OperationCanceledException();
                     InstallLogger.Write("下载完成(第 " + attempt + " 次尝试):" + url + " -> " + targetPath);
                     return url;
                 }
@@ -394,7 +433,8 @@ namespace DshInstaller.Shared.Install
                 catch (Exception exception)
                 {
                     // A fully downloaded but invalid archive must not seed a later Range request.
-                    if (File.Exists(targetPath)) File.Delete(targetPath);
+                    if (ownsTarget) DeleteTemporary(targetPath);
+                    ownsTarget = false;
                     failures.Add("[" + attempt + "] " + url + " : " + exception.Message);
                     InstallLogger.Write(
                         "下载失败(第 " + attempt + "/" + MaxAttempts + " 次):" + url + " : " + exception.Message);
@@ -421,6 +461,12 @@ namespace DshInstaller.Shared.Install
                     "已尝试 " + MaxAttempts + " 个下载源,均未成功:",
                     "Downloading failed after trying " + MaxAttempts + " sources:")
                 + "\r\n" + string.Join("\r\n", failures.ToArray()));
+        }
+
+        private static void DeleteTemporary(string path)
+        {
+            try { File.Delete(path); }
+            catch (Exception exception) { InstallLogger.Write("下载临时文件清理失败:" + path + " : " + exception.Message); }
         }
 
         private static void Notice(Action<string> onNotice, string message)

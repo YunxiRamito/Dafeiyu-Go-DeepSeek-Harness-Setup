@@ -85,6 +85,7 @@ namespace DshInstaller.Shared.Install
                 o.SourcePreference, WellKnown.DotNetDesktopMajor);
 
             string installer = Path.Combine(o.TempRoot, WellKnown.DotNetRuntimeInstallerFile);
+            using var cleanup = new TemporaryCleanup(installer);
             context.Report(
                 SharedText.T("准备中 · 下载 .NET " + WellKnown.DotNetDesktopMajor + " 桌面运行时",
                              "Preparing · downloading the .NET " + WellKnown.DotNetDesktopMajor + " Desktop Runtime"),
@@ -96,7 +97,6 @@ namespace DshInstaller.Shared.Install
                 SharedText.T(".NET 桌面运行时", "the .NET Desktop Runtime"), 75, 96).ConfigureAwait(false);
 
             string after = RuntimeProbe.DotNetDesktopVersion;
-            TryDelete(installer);
 
             if (string.IsNullOrEmpty(after))
             {
@@ -141,6 +141,7 @@ namespace DshInstaller.Shared.Install
             List<string> urls = MirrorSource.WindowsAppRuntimeUrls(WellKnown.WindowsAppRuntimeVersion);
 
             string installer = Path.Combine(o.TempRoot, WellKnown.WindowsAppRuntimeInstallerFile);
+            using var cleanup = new TemporaryCleanup(installer);
             context.Report(SharedText.T("准备中 · 下载 Windows App Runtime",
                                         "Preparing · downloading Windows App Runtime"), 3);
 
@@ -151,7 +152,6 @@ namespace DshInstaller.Shared.Install
                 SharedText.T("Windows App Runtime", "Windows App Runtime"), 75, 96).ConfigureAwait(false);
 
             string after = RuntimeProbe.WindowsAppRuntimeVersion;
-            TryDelete(installer);
 
             if (string.IsNullOrEmpty(after))
             {
@@ -336,6 +336,8 @@ namespace DshInstaller.Shared.Install
             List<string> urls = MirrorSource.NodeUrls(version, fileName, o.SourcePreference);
 
             string archive = Path.Combine(o.TempRoot, fileName);
+            string extractRoot = Path.Combine(o.TempRoot, "node-extract");
+            using var cleanup = new TemporaryCleanup(archive, extractRoot);
             context.Report(SharedText.T("准备中 · 下载 Node " + version, "Preparing · downloading Node " + version), 5);
 
             await Task.Run(delegate
@@ -365,7 +367,6 @@ namespace DshInstaller.Shared.Install
             token.ThrowIfCancellationRequested();
             context.Report(SharedText.T("安装中 · 正在解压", "Installing · extracting"), 75);
 
-            string extractRoot = Path.Combine(o.TempRoot, "node-extract");
             if (Directory.Exists(extractRoot))
             {
                 Directory.Delete(extractRoot, true);
@@ -394,8 +395,6 @@ namespace DshInstaller.Shared.Install
                 throw new InvalidDataException("Node 归档缺少 node.exe 或 npm.cmd。");
             if (Directory.Exists(nodeDir)) Directory.Delete(nodeDir, true);
             PortableDirectoryDeployment.MoveToTarget(inner, nodeDir, token);
-            TryDelete(extractRoot);
-            TryDelete(archive);
 
             if (!File.Exists(nodeExe))
             {
@@ -507,6 +506,7 @@ namespace DshInstaller.Shared.Install
             //   2. 顺便避开长命令行在 cmd 里的引号地狱。
             string nodeDir = ResolveNodeDirectory(o);
             string wrapper = Path.Combine(o.TempRoot, "npm-install.cmd");
+            using var cleanup = new TemporaryCleanup(wrapper);
             Directory.CreateDirectory(o.TempRoot);
 
             System.Text.StringBuilder script = new System.Text.StringBuilder();
@@ -750,6 +750,7 @@ namespace DshInstaller.Shared.Install
             // 到底拿到哪种得看内容(下面 MaterializeLauncherArchive),不能靠后缀猜。
             string downloaded = Path.Combine(o.TempRoot, "launcher-" + release.Version + ".bin");
             string archive = null;
+            using var cleanup = new TemporaryCleanup(downloaded, Path.Combine(o.TempRoot, "launcher-" + release.Version + ".zip"));
             context.Report(SharedText.T("准备中 · 下载启动器 " + release.Version, "Preparing · downloading the launcher " + release.Version), 10);
 
             await Task.Run(delegate
@@ -811,8 +812,6 @@ namespace DshInstaller.Shared.Install
             ExtractionResult launcherExtract = await Task.Run(
                 delegate { return ArchiveExtractor.ExtractDetailed(archive, o.LauncherRoot); }, token).ConfigureAwait(false);
             context.Log("解压启动器: " + launcherExtract.Describe());
-
-            TryDelete(archive);
 
             if (!File.Exists(launcherExe))
             {
@@ -904,6 +903,7 @@ namespace DshInstaller.Shared.Install
             List<string> urls = MirrorSource.MinGitUrls(o.SourcePreference, DefaultGitVersion);
 
             string archive = Path.Combine(o.TempRoot, fileName);
+            using var cleanup = new TemporaryCleanup(archive);
             context.Report(SharedText.T("准备中 · 下载 MinGit", "Preparing · downloading MinGit"), 5);
 
             await Task.Run(delegate
@@ -931,7 +931,6 @@ namespace DshInstaller.Shared.Install
             ExtractionResult gitExtract = await Task.Run(
                 delegate { return ArchiveExtractor.ExtractDetailed(archive, gitDir); }, token).ConfigureAwait(false);
             context.Log("解压 Git: " + gitExtract.Describe());
-            TryDelete(archive);
 
             context.Log("Git 已解压到 " + gitDir);
             context.Report(SharedText.T("完成", "Done"), 100);
@@ -991,9 +990,9 @@ namespace DshInstaller.Shared.Install
             // 那个 tgz 下下来之后要解出里面的 package/pnpm.exe —— 而候选列表里还混着
             // GitHub 的直链 exe,引擎轮换到哪条都可能。所以下完**按内容判断**:
             // gzip 头(1F 8B)就是 tgz,否则拿到的已经是 exe。
-            bool china = MirrorSource.IsChina(o.SourcePreference);
             string tgzPath = Path.Combine(o.TempRoot, "pnpm-win-x64-" + DefaultPnpmVersion + ".tgz");
-            string downloadTarget = china ? tgzPath : pnpmExe;
+            string downloadTarget = tgzPath;
+            using var cleanup = new TemporaryCleanup(downloadTarget);
             List<string> urls = MirrorSource.PnpmUrls(o.SourcePreference, DefaultPnpmVersion);
 
             context.Report(SharedText.T("准备中 · 下载 pnpm", "Preparing · downloading pnpm"), 10);
@@ -1016,10 +1015,8 @@ namespace DshInstaller.Shared.Install
                     });
             }, token).ConfigureAwait(false);
 
-            if (china)
-            {
-                MaterializePnpm(context, downloadTarget, pnpmExe);
-            }
+            token.ThrowIfCancellationRequested();
+            MaterializePnpm(context, downloadTarget, pnpmExe);
 
             context.Log("pnpm 已就位:" + pnpmExe);
             context.Report(SharedText.T("完成", "Done"), 100);
@@ -1220,6 +1217,7 @@ namespace DshInstaller.Shared.Install
             List<string> urls = MirrorSource.PythonUrls(o.SourcePreference, DefaultPythonVersion);
 
             string archive = Path.Combine(o.TempRoot, fileName);
+            using var cleanup = new TemporaryCleanup(archive);
             context.Report(SharedText.T("准备中 · 下载 Python", "Preparing · downloading Python"), 5);
 
             await Task.Run(delegate
@@ -1247,7 +1245,6 @@ namespace DshInstaller.Shared.Install
             ExtractionResult pyExtract = await Task.Run(
                 delegate { return ArchiveExtractor.ExtractDetailed(archive, pythonDir); }, token).ConfigureAwait(false);
             context.Log("解压 Python: " + pyExtract.Describe());
-            TryDelete(archive);
 
             context.Log("Python 已解压到 " + pythonDir);
             context.Report(SharedText.T("完成", "Done"), 100);
@@ -2538,6 +2535,16 @@ namespace DshInstaller.Shared.Install
             }
 
             return "'" + value.Replace("'", "''") + "'";
+        }
+
+        private sealed class TemporaryCleanup : IDisposable
+        {
+            private readonly string[] _paths;
+            internal TemporaryCleanup(params string[] paths) { _paths = paths; }
+            public void Dispose()
+            {
+                foreach (string path in _paths) TryDelete(path);
+            }
         }
 
         private static void TryDelete(string path)
