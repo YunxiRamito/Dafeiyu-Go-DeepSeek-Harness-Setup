@@ -2,7 +2,9 @@
 
 ## 2026-10-13 安装器 1.8.0 官方版迁移最终交付（优先于下方历史）
 
-本轮安装器最终包已通过发布前验收，GitHub 发布待执行；启动器仅本地编译，网页和手机端不在本轮范围。用户指定 Release 正文保持单行：`修复检测不到安装组件的潜在bug`。
+本轮安装器已正式发布 GitHub v1.8.0；启动器仅本地编译，网页和手机端不在本轮范围。用户指定 Release 正文保持单行：`修复检测不到安装组件的潜在bug`。
+
+- Release：`https://github.com/YunxiRamito/Dafeiyu-Go-DeepSeek-Harness-Setup/releases/tag/v1.8.0`，id `411283070`，tag 指向 `2385da7a3b095a77c7b4565aee3b51f137104e04`。资产 id `635914389`，GitHub 返回的大小及 SHA-256 与下方本地包一致；非草稿、非预发布并设为 latest。tag CI `38347936878` 已确认 completed/cancelled，避免覆盖本地验收资产。
 
 - 最终包：`../Temp_SetupandLauncher/OfficialMigration-20261013/Installer-Release180/DSH-Installer-Setup.exe`，11,656,818 字节；SHA-256 `ADC2AAFAC2A420726158533D108A67C26286096CE01F4F55EE49F0B6C4164E3C`。Boot、内部安装器和卸载器均为 1.8.0.0；打包 7/7 与内置自检通过。
 - Runtime 检测独立读取 HKLM/HKCU，接受合法的 Main/framework 1.8 包及正确架构，取最高版本；错误 `0x8007177E` 的 EFS 策略诊断保留。未在反馈用户的真实电脑复现或修改其策略。
