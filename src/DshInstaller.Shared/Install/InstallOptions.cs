@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 
 namespace DshInstaller.Shared.Install
@@ -24,6 +25,11 @@ namespace DshInstaller.Shared.Install
 
         /// <summary>本机已有 DSH,直接用现有的、跳过下载。</summary>
         public bool UseExistingDsh { get; set; }
+
+        // Kept in the elevation plan: the worker may run under a different user.
+        public string OfficialMigrationInstallRoot { get; set; }
+        public string OfficialMigrationHome { get; set; }
+        public string LauncherSettingsFile { get; set; }
 
         /// <summary>下载源偏好(见 <see cref="MirrorSource"/>)。</summary>
         private string sourcePreference = MirrorSource.China;
@@ -205,6 +211,37 @@ namespace DshInstaller.Shared.Install
             {
                 string layout = InstallPaths.ValidateLayout(DshRoot, LauncherRoot, ComponentsRoot);
                 if (layout != null) problems.Add(layout);
+                try
+                {
+                    var migrationSources = new List<string>();
+                    foreach (string source in new[] { OfficialMigrationInstallRoot, OfficialMigrationHome })
+                    {
+                        if (String.IsNullOrWhiteSpace(source)) continue;
+                        // Never resolve migration sources against the elevated user's working directory.
+                        string sourcePath = InstallPaths.Canonical(source);
+                        if (InstallPaths.HasReparseAncestor(sourcePath))
+                            throw new InvalidOperationException("迁移来源目录不能包含符号链接或目录联接。");
+                        migrationSources.Add(sourcePath);
+                    }
+                    foreach (string destination in new[] { DshRoot, LauncherRoot, ComponentsRoot })
+                    {
+                        var directory = new System.IO.DirectoryInfo(InstallPaths.Canonical(destination));
+                        if (migrationSources.Count > 0 && InstallPaths.HasReparseAncestor(directory.FullName))
+                            throw new InvalidOperationException("迁移安装目标不能包含符号链接或目录联接。");
+                        for (var parent = directory; parent != null; parent = parent.Parent)
+                        {
+                            if (System.IO.File.Exists(System.IO.Path.Combine(parent.FullName, "resources", "app.asar"))
+                                && System.IO.File.Exists(System.IO.Path.Combine(parent.FullName, "resources", "runtime", "cli", "bin", "dsh.cmd")))
+                                throw new InvalidOperationException("请选择官方版程序目录之外的独立安装位置。");
+                        }
+                        foreach (string source in migrationSources)
+                        {
+                            if (InstallPaths.Overlaps(source, directory.FullName))
+                                throw new InvalidOperationException("迁移来源与安装目标不能相同或互相包含。");
+                        }
+                    }
+                }
+                catch (Exception exception) { problems.Add(exception.Message); }
             }
             return problems.Count == 0 ? null : string.Join("; ", problems.ToArray());
         }

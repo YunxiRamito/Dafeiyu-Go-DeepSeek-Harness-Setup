@@ -36,7 +36,8 @@ namespace DshInstaller.Shared.Detection
             report.Components.Add(ProbePnpm(path));
             report.Components.Add(ProbeGit(path));
             report.Components.Add(ProbePython(path));
-            report.Components.Add(ProbeDsh(dshRootHint));
+            report.DshInstallations.AddRange(DshLocator.FindInstallations(dshRootHint));
+            report.Components.Add(ProbeDsh(report.DshInstallations));
             report.Components.Add(ProbeWindowsAppRuntime());
             report.Components.Add(ProbeDotNetDesktop());
 
@@ -572,7 +573,7 @@ namespace DshInstaller.Shared.Detection
             status.Notes = SharedText.T("已就绪。", "Ready.");
             return status;
         }
-        private static ComponentStatus ProbeDsh(string rootHint)
+        private static ComponentStatus ProbeDsh(List<DshInstallation> candidates)
         {
             ComponentStatus status = new ComponentStatus
             {
@@ -582,30 +583,16 @@ namespace DshInstaller.Shared.Detection
                 Installable = true,
             };
 
-            List<string> roots = new List<string>();
-            if (!string.IsNullOrWhiteSpace(rootHint))
+            for (int index = 0; index < candidates.Count; index++)
             {
-                roots.Add(rootHint);
-            }
-
-            foreach (string candidate in DshLocator.FindCandidates())
-            {
-                if (!roots.Contains(candidate))
+                DshInstallation candidate = candidates[index];
+                if (candidate.Kind == DshInstallationKind.Npm)
                 {
-                    roots.Add(candidate);
-                }
-            }
-
-            for (int index = 0; index < roots.Count; index++)
-            {
-                string root = roots[index];
-                if (DshLocator.LooksLikeDshRoot(root))
-                {
-                    status.Path = root;
-                    status.DetectedVersion = DshLocator.ReadPackageVersion(root);
+                    status.Path = candidate.Root;
+                    status.DetectedVersion = candidate.Version;
                     status.VersionOk = true;
                     status.State = DetectState.Ready;
-                    status.Notes = SharedText.T("已装在 ", "Installed at ") + root + SharedText.T("。", ".");
+                    status.Notes = SharedText.T("已装在 ", "Installed at ") + candidate.Root + SharedText.T("。", ".");
                     return status;
                 }
             }
@@ -655,34 +642,78 @@ namespace DshInstaller.Shared.Detection
             return status;
         }
 
-        /// <summary>在 Appx 存储里找 WinAppRuntime 1.8 及其版本号。</summary>
+        /// <summary>
+        /// 在全局和当前用户 AppX 注册位置里找 WinAppRuntime 1.8。
+        /// 浏览器/商店安装可能使用 Microsoft.WindowsAppRuntime.1.8 包名，
+        /// 不应只检查旧的 MicrosoftCorporationII 主包前缀。
+        /// </summary>
         public static string FindWindowsAppRuntimeVersion()
         {
-            const string keyPath =
-                @"SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Applications";
-            try
+            RegistryKey[] hives = new[] { Registry.LocalMachine, Registry.CurrentUser };
+            string[] locations = new[]
             {
-                using (RegistryKey key = Registry.LocalMachine.OpenSubKey(keyPath))
-                {
-                    if (key == null)
-                    {
-                        return null;
-                    }
+                @"SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Applications",
+                @"Software\Classes\Local Settings\Software\Microsoft\Windows\CurrentVersion\AppModel\Repository\Packages"
+            };
+            return FindWindowsAppRuntimeVersionFromStores(index =>
+            {
+                using RegistryKey key = hives[index].OpenSubKey(locations[index]);
+                return key == null ? Array.Empty<string>() : key.GetSubKeyNames();
+            });
+        }
 
-                    const string prefix = "MicrosoftCorporationII.WinAppRuntime.Main.1.8_";
-                    foreach (string name in key.GetSubKeyNames())
+        private static string FindWindowsAppRuntimeVersionFromStores(Func<int, IEnumerable<string>> readNames)
+        {
+            string best = null;
+            for (int index = 0; index < 2; index++)
+            {
+                try
+                {
+                    foreach (string name in readNames(index))
                     {
-                        if (name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                        string version = ParseWindowsAppRuntimePackageVersion(name);
+                        if (!String.IsNullOrEmpty(version)
+                            && (String.IsNullOrEmpty(best) || RuntimeProbe.VersionAtLeast(version, best)))
                         {
-                            string remainder = name.Substring(prefix.Length);
-                            int end = remainder.IndexOf('_');
-                            return end >= 0 ? remainder.Substring(0, end) : remainder;
+                            best = version;
                         }
                     }
                 }
+                catch (Exception exception)
+                {
+                    InstallLogger.Write("Windows App Runtime registry scan failed ("
+                        + (index == 0 ? "HKLM" : "HKCU") + "): " + exception.Message);
+                }
             }
-            catch
+
+            return best;
+        }
+
+        private static string ParseWindowsAppRuntimePackageVersion(string packageName)
+        {
+            if (String.IsNullOrEmpty(packageName)) return null;
+            string[] prefixes = new string[]
             {
+                "MicrosoftCorporationII.WinAppRuntime.Main.1.8_",
+                "Microsoft.WindowsAppRuntime.1.8_"
+            };
+
+            for (int i = 0; i < prefixes.Length; i++)
+            {
+                if (!packageName.StartsWith(prefixes[i], StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                string remainder = packageName.Substring(prefixes[i].Length);
+                string[] parts = remainder.Split('_');
+                if (parts.Length != 4 || (parts[1] != "x64" && !(i == 0 && parts[1] == "neutral"))) return null;
+                string version = parts[0];
+                Version parsed;
+                if (Version.TryParse(version, out parsed) && parsed.Build >= 0 && parsed.Revision >= 0)
+                {
+                    return version;
+                }
             }
 
             return null;

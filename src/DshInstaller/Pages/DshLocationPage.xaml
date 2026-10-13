@@ -7,7 +7,24 @@
     Background="Transparent">
 
     <controls:PageScaffold x:Name="Scaffold" Title="" Subtitle="">
+        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollMode="Disabled">
         <StackPanel Spacing="14">
+            <StackPanel x:Name="ExistingBox" Visibility="Collapsed" Spacing="10">
+                <StackPanel.Transitions>
+                    <TransitionCollection><EntranceThemeTransition /></TransitionCollection>
+                </StackPanel.Transitions>
+                <TextBlock x:Name="ExistingTitle" FontSize="14" FontWeight="SemiBold" TextWrapping="Wrap" />
+                <TextBlock x:Name="ExistingDescription" FontSize="12.5" TextWrapping="Wrap" Foreground="{ThemeResource SecondaryTextBrush}" />
+                <ComboBox x:Name="InstallationBox" HorizontalAlignment="Stretch" SelectionChanged="OnInstallationChanged" />
+                <StackPanel Spacing="4">
+                    <RadioButton x:Name="ReuseButton" GroupName="DshChoice" Tag="reuse" Checked="OnChoiceChanged" />
+                    <RadioButton x:Name="MigrateButton" GroupName="DshChoice" Tag="migrate" Checked="OnChoiceChanged" />
+                    <RadioButton x:Name="FreshButton" GroupName="DshChoice" Tag="fresh" Checked="OnChoiceChanged" />
+                </StackPanel>
+                <Expander x:Name="MigrationOptions" Visibility="Collapsed" HorizontalAlignment="Stretch">
+                    <TextBox x:Name="MigrationHomeBox" TextChanged="OnPathChanged" />
+                </Expander>
+            </StackPanel>
 
             <Border CornerRadius="{ThemeResource CardCornerRadius}"
                     Background="{ThemeResource CardBackgroundBrush}"
@@ -26,7 +43,7 @@
                                    FontSize="12.5"
                                    Foreground="{ThemeResource SecondaryTextBrush}" />
                         <TextBox x:Name="PathBox" Grid.Column="1" Height="32"
-                                 VerticalAlignment="Center" />
+                                 VerticalAlignment="Center" TextChanged="OnPathChanged" />
                         <Button x:Name="BrowseButton" Grid.Column="2" Height="32" MinWidth="76"
                                 Click="OnBrowseClick" />
                     </Grid>
@@ -36,30 +53,11 @@
                 </StackPanel>
             </Border>
 
-            <!-- 已装 DSH 的话给一条"直接用现有的" -->
-            <Border x:Name="ExistingBox" Visibility="Collapsed"
-                    CornerRadius="{ThemeResource CardCornerRadius}"
-                    Background="{ThemeResource AccentSoftBrush}"
-                    Padding="16,13">
-                <StackPanel Spacing="9">
-                    <StackPanel Orientation="Horizontal" Spacing="9">
-                        <FontIcon Glyph="&#xE73E;" FontSize="13" VerticalAlignment="Center"
-                                  Foreground="{ThemeResource SuccessBrush}" />
-                        <TextBlock x:Name="ExistingTitle" FontSize="13" FontWeight="SemiBold"
-                                   VerticalAlignment="Center"
-                                   Foreground="{ThemeResource PrimaryTextBrush}" />
-                    </StackPanel>
-                    <TextBlock x:Name="ExistingPath" FontSize="11.5" TextWrapping="Wrap"
-                               FontFamily="Consolas"
-                               Foreground="{ThemeResource SecondaryTextBrush}" />
-                    <CheckBox x:Name="UseExistingBox" Checked="OnUseExistingChanged"
-                              Unchecked="OnUseExistingChanged" />
-                </StackPanel>
-            </Border>
-
             <!-- 磁盘占用提示 -->
             <TextBlock x:Name="DiskHint" FontSize="11.5" TextWrapping="Wrap"
                        Foreground="{ThemeResource TertiaryTextBrush}" />
+            <InfoBar x:Name="ValidationMessage" IsOpen="False" IsClosable="False" Severity="Error" />
         </StackPanel>
+        </ScrollViewer>
     </controls:PageScaffold>
 </Page>

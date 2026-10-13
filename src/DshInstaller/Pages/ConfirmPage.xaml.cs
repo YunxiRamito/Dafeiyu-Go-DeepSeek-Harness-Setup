@@ -179,7 +179,15 @@ namespace DshInstaller.Pages
                         + (Localization.IsChinese ? " 个" : " item(s)"));
 
             Add(Localization.IsChinese ? "DSH 本体" : "DSH core", options.DshRoot);
+            if (!String.IsNullOrWhiteSpace(options.OfficialMigrationHome))
+                Add(Localization.IsChinese ? "官方版迁移" : "Official migration",
+                    options.OfficialMigrationHome + "\n" + (Localization.IsChinese
+                        ? "安装完成后预览并确认导入；保留官方版及原数据。"
+                        : "Review and confirm the import after installation. The official app and source data are retained."));
             Add(Localization.IsChinese ? "启动器" : "Launcher", options.LauncherRoot);
+            Add(Localization.IsChinese ? "启动器设置" : "Launcher settings", Localization.IsChinese
+                ? "使用本次选择的 DSH，请先退出正在运行的启动器。已有设置修改前会备份；切换本体后需重新配置 API Key。"
+                : "Use the selected DSH. Close running launchers first. Existing settings are backed up before changes. Configure the API key again after switching installations.");
 
             Add(Localization.IsChinese ? "桌面快捷方式" : "Desktop shortcut",
                 YesNo(session.CreateDesktopShortcut));

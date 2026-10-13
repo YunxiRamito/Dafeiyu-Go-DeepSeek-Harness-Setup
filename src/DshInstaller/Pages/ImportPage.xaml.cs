@@ -48,26 +48,47 @@ namespace DshInstaller.Pages
         private bool _confirmationOpen;
         private CancellationTokenSource _discoveryCancellation;
         private DateTime _discoveryProgressUtc;
+        private bool _migrationLoaded;
+        private bool _migrationCompleted;
+        private bool MigrationRequested => !String.IsNullOrWhiteSpace(InstallSession.Current.OfficialMigrationHome);
 
         public ImportPage()
         {
             InitializeComponent();
             BuildConflictChoices();
             ApplyText();
+            Loaded += OnMigrationLoaded;
         }
 
         public bool CanGoNext
         {
-            get { return !_busy && !_confirmationOpen && _discoveryCancellation == null; }
+            get { return !_busy && !_confirmationOpen && _discoveryCancellation == null
+                && (!MigrationRequested || _migrationCompleted || SkipMigrationBox.IsChecked == true); }
         }
 
         /// <summary>点"下一步"就是"去完成页" —— 导入是可选的,跳过也该顺顺当当走下去。</summary>
         public bool OnNext()
         {
-            if (_busy || _confirmationOpen || _discoveryCancellation != null) return false;
+            if (!CanGoNext) return false;
             InstallSession.Current.ImportedBackup = _imported;
             return true;
         }
+
+        private async void OnMigrationLoaded(object sender, RoutedEventArgs args)
+        {
+            if (_migrationLoaded || !MigrationRequested) return;
+            _migrationLoaded = true;
+            Scaffold.Title = Localization.IsChinese ? "迁移官方版数据" : "Migrate official DSH data";
+            Scaffold.Subtitle = Localization.IsChinese
+                ? "确认要迁移的对话、插件和 Skill。来源保持不变，同名数据保留并跳过。"
+                : "Review conversations, plug-ins and skills. Source data is retained; existing target items are skipped.";
+            SkipMigrationBox.Content = Localization.IsChinese ? "本次暂不迁移，保留全新安装" : "Skip migration and keep the fresh installation";
+            SkipMigrationBox.Visibility = Visibility.Visible;
+            await SelectDshAsync(InstallSession.Current.OfficialMigrationHome);
+            App.MainWindowInstance?.RefreshChrome();
+        }
+
+        private void OnSkipMigrationChanged(object sender, RoutedEventArgs args) => App.MainWindowInstance?.RefreshChrome();
 
         public bool CanClose => !_busy && _discoveryCancellation == null;
 
@@ -376,7 +397,7 @@ namespace DshInstaller.Pages
                 foreach (string profile in profiles)
                     DshProfileBox.Items.Add(new ComboBoxItem { Content = profile, Tag = profile });
                 DshProfileBox.SelectedIndex = profiles.Count == 0 ? -1 : Math.Max(0,
-                    profiles.FindIndex(profile => profile.Equals("default", StringComparison.OrdinalIgnoreCase)));
+                    profiles.FindIndex(profile => profile.Equals(MigrationRequested ? "desktop" : "default", StringComparison.OrdinalIgnoreCase)));
                 _fillingProfiles = false;
                 DshProfileBox.Visibility = profiles.Count > 1 ? Visibility.Visible : Visibility.Collapsed;
                 ArchiveText.Text = home;
@@ -417,6 +438,9 @@ namespace DshInstaller.Pages
 
         private async Task LoadOfficialPreviewAsync()
         {
+            using var cancellation = new CancellationTokenSource();
+            BeginImport(cancellation);
+            ImportProgress.IsIndeterminate = true;
             _officialPlan = null;
             GroupsCard.Visibility = Visibility.Collapsed;
             try
@@ -429,7 +453,8 @@ namespace DshInstaller.Pages
                 string targetProfile = "web";
                 string sourceProfile = (DshProfileBox.SelectedItem as ComboBoxItem)?.Tag as string ?? "default";
                 string source = _officialSource;
-                _officialPlan = await Task.Run(() => DshDataImportService.Preview(source, targetHome, sourceProfile, targetProfile, CancellationToken.None));
+                _officialPlan = await Task.Run(() => DshDataImportService.Preview(source, targetHome, sourceProfile, targetProfile,
+                    cancellation.Token, progress: (text, percent) => ReportImportProgress(cancellation, text, percent)));
                 _officialBoxes.Clear();
                 GroupsHost.Children.Clear();
                 foreach (OfficialImportGroup group in _officialPlan.Groups)
@@ -446,6 +471,8 @@ namespace DshInstaller.Pages
                 DshImportSummary.Visibility = Visibility.Visible;
                 GroupsCard.Visibility = Visibility.Visible;
                 ImportButton.Visibility = Visibility.Visible;
+                ImportProgress.IsIndeterminate = false;
+                SetImportProgress(100);
                 StatusText.Text = Localization.IsChinese ? "请停止来源和目标 DSH，再开始导入。" : "Stop the source and target DSH before importing.";
             }
             catch (Exception exception)
@@ -453,6 +480,7 @@ namespace DshInstaller.Pages
                 _officialPlan = null;
                 StatusText.Text = exception.Message;
             }
+            finally { EndImport(cancellation); }
         }
 
         private void RefreshOfficialSummary()
@@ -614,9 +642,11 @@ namespace DshInstaller.Pages
                 };
                 if (!confirmed && await dialog.ShowAsync() != ContentDialogResult.Primary) return;
                 if (!await RequireStoppedTargetAsync(InstallSession.Current.DshRoot, cancellation.Token)) return;
+                if (MigrationRequested && !await RequireStoppedMigrationSourceAsync(cancellation.Token)) return;
                 OfficialImportResult result = await Task.Run(() => DshDataImportService.Import(plan, selected,
                     (text, percent) => ReportImportProgress(cancellation, text, percent), cancellation.Token));
                 _imported |= result.Imported > 0;
+                if (result.Ok && MigrationRequested) _migrationCompleted = true;
                 if (result.Ok) SetImportProgress(100);
                 var details = new List<string>();
                 if (result.Ok) details.Add(result.Summary);
@@ -708,6 +738,18 @@ namespace DshInstaller.Pages
             token.ThrowIfCancellationRequested();
             if (!running) return true;
             ShowImportFailure(Localization.IsChinese ? "请先停止目标 DSH 服务，再导入数据。" : "Stop the target DSH service before importing.");
+            return false;
+        }
+
+        private async Task<bool> RequireStoppedMigrationSourceAsync(CancellationToken token)
+        {
+            string root = InstallSession.Current.OfficialMigrationInstallRoot;
+            string home = InstallSession.Current.OfficialMigrationHome;
+            bool running = await Task.Run(() => (!String.IsNullOrWhiteSpace(root) && DshInstaller.Shared.DshLocator.IsRootRunning(root))
+                || DshInstaller.Shared.DshLocator.IsRootRunning(home));
+            token.ThrowIfCancellationRequested();
+            if (!running) return true;
+            ShowImportFailure(Localization.IsChinese ? "请先退出官方版 DSH，再迁移数据。" : "Close the official DSH app before migrating data.");
             return false;
         }
 
@@ -829,11 +871,13 @@ namespace DshInstaller.Pages
                 App.MainWindowInstance?.RefreshChrome();
                 content.Children.Remove(GroupsCard);
                 content.Children.Remove(DshProfileBox);
-                DshProfileBox.Visibility = Visibility.Collapsed;
+                DshProfileBox.Visibility = _officialPlan != null && DshProfileBox.Items.Count > 1
+                    ? Visibility.Visible : Visibility.Collapsed;
                 profileParent.Children.Insert(profileIndex, DshProfileBox);
                 content.Children.Remove(ProgressPanel);
                 content.Children.Remove(StatusText);
-                GroupsCard.Visibility = Visibility.Collapsed;
+                GroupsCard.Visibility = _officialPlan != null || _archive != null ? Visibility.Visible : Visibility.Collapsed;
+                ImportButton.Visibility = Visibility.Visible;
                 GroupsCard.Background = groupBackground;
                 GroupsCard.BorderThickness = groupBorder;
                 GroupsCard.Padding = groupPadding;

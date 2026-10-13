@@ -582,6 +582,19 @@ internal static class Boot
     {
         try
         {
+            if (NtfsEncryptionDisabled())
+            {
+                Log("Windows App Runtime 安装前检查失败: NTFS 文件加密已被系统策略禁用。");
+                ShowRuntimeInstallFailure(
+                    "无法安装 Windows App Runtime。\r\n\r\n"
+                    + "这台电脑的系统策略禁用了 NTFS 文件加密（DisableEncryption = 1）。"
+                    + "Windows App Runtime 的安装过程需要该能力，因此反复重试也不会成功。\r\n\r\n"
+                    + "请联系系统管理员，将“禁止对所有 NTFS 卷使用加密”策略设为“未配置”或“已禁用”，"
+                    + "然后执行 gpupdate /force 或重启电脑，再重新运行安装器。",
+                    WinAppRuntimeDownloadPage);
+                return false;
+            }
+
             string file = Path.Combine(Path.GetTempPath(), "windowsappruntimeinstall-x64.exe");
 
             // 顺序很重要:**先拿和安装器自身要求一致的精确版本**,再退到 latest。
@@ -608,6 +621,7 @@ internal static class Boot
             }
 
             window.SetStatus(plan.Next());
+            Log("Windows App Runtime 安装环境: " + DescribeInstallVolumes(file));
             int code = RunInstaller(window, plan, file, "--quiet", delegate { return WindowsAppRuntimeOk(); });
             Log("Windows App Runtime 退出码 = " + code);
             TryDelete(file);
@@ -615,6 +629,17 @@ internal static class Boot
             if (!WindowsAppRuntimeOk())
             {
                 Log("Windows App Runtime 装完还是不达标:" + DescribeRuntimes());
+                if (code == unchecked((int)0x8007177E))
+                {
+                    Log("Windows App Runtime 返回 ERROR_VOLUME_NOT_SUPPORT_EFS(6014): 当前安装工作目录或临时卷不支持文件加密。");
+                    ShowRuntimeInstallFailure(
+                        "Windows App Runtime 安装失败（0x8007177E）。\r\n\r\n"
+                        + "Windows 报告安装暂存卷不支持文件加密。请把安装包复制到本机 NTFS 磁盘（通常是 C:）后重新运行，"
+                        + "不要从 U 盘、网络盘或其他不支持文件加密的磁盘直接启动。\r\n\r\n"
+                        + "如果仍然失败，请把 %TEMP% 和系统盘的文件系统信息一并提供。",
+                        WinAppRuntimeDownloadPage);
+                    return false;
+                }
                 return PromptManualDownload();
             }
 
@@ -1426,6 +1451,10 @@ internal static class Boot
         {
             FileName = file,
             Arguments = arguments,
+            // Do not inherit the launcher's current directory. The setup EXE may
+            // have been started from a USB, network or other volume that cannot
+            // support EFS, while the downloaded runtime is already on local TEMP.
+            WorkingDirectory = Path.GetDirectoryName(file),
             UseShellExecute = false,
             CreateNoWindow = true,
         };
@@ -1552,8 +1581,68 @@ internal static class Boot
             runtime += "(低于要求的 " + MinWinAppRuntimeVersion + ")";
         }
 
-        return ".NET=" + (DotNetDesktopVersion() ?? "(缺)")
+        string description = ".NET=" + (DotNetDesktopVersion() ?? "(缺)")
             + " / WinAppRuntime=" + runtime;
+        Log("Windows App Runtime 探测包=" + WindowsAppRuntimePackagesDescription());
+        return description;
+    }
+
+    private static string DescribeInstallVolumes(string installerFile)
+    {
+        string current = String.Empty;
+        string temp = String.Empty;
+        string installer = String.Empty;
+        try { current = DescribeVolume(Environment.CurrentDirectory); } catch { current = "(读取失败)"; }
+        try { temp = DescribeVolume(Path.GetTempPath()); } catch { temp = "(读取失败)"; }
+        try { installer = DescribeVolume(installerFile); } catch { installer = "(读取失败)"; }
+        return "当前目录=" + current + " / TEMP=" + temp + " / 安装包=" + installer
+            + " / NTFS加密=" + (NtfsEncryptionDisabled() ? "已禁用" : "可用或未检测到禁用策略");
+    }
+
+    private static bool NtfsEncryptionDisabled()
+    {
+        try
+        {
+            using (RegistryKey key = Registry.LocalMachine.OpenSubKey(
+                @"SYSTEM\CurrentControlSet\Control\FileSystem"))
+            {
+                object value = key == null ? null : key.GetValue("NtfsDisableEncryption");
+                return value is int && (int)value != 0;
+            }
+        }
+        catch (Exception exception)
+        {
+            Log("读取 NTFS 加密策略失败:" + exception.Message);
+            return false;
+        }
+    }
+
+    private static string DescribeVolume(string path)
+    {
+        string full = Path.GetFullPath(path);
+        string root = Path.GetPathRoot(full);
+        DriveInfo drive = new DriveInfo(root);
+        return root + "(" + drive.DriveFormat + ",可用 " + drive.AvailableFreeSpace + " 字节)";
+    }
+
+    private static void ShowRuntimeInstallFailure(string message, string helpUrl)
+    {
+        try
+        {
+            DialogResult answer = MessageBox.Show(
+                message + "\r\n\r\n是否打开 Windows App Runtime 官方下载页？",
+                "Windows App Runtime 安装失败",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Error);
+            if (answer == DialogResult.Yes)
+            {
+                Process.Start(helpUrl);
+            }
+        }
+        catch (Exception exception)
+        {
+            Log("显示 Windows App Runtime 错误提示失败:" + exception.Message);
+        }
     }
 
     private static string DescribeMissing()
@@ -1680,41 +1769,118 @@ internal static class Boot
     }
 
     /// <summary>
-    /// 找 Windows App Runtime。它在 Appx 的 AllUserStore 里以
-    /// MicrosoftCorporationII.WinAppRuntime.Main.1.8_ 开头登记,取版本号部分。
+    /// 找 Windows App Runtime。浏览器/商店安装可能登记到当前用户的 AppX
+    /// Repository，也可能登记到全局 AllUserStore；不同发行渠道还会使用
+    /// MicrosoftCorporationII.WinAppRuntime.Main.1.8_ 或
+    /// Microsoft.WindowsAppRuntime.1.8_ 包名。全部候选中取最高版本。
     /// </summary>
     private static string WindowsAppRuntimeVersion()
     {
-        try
+        string best = null;
+        RegistryKey[] hives = new RegistryKey[] { Registry.LocalMachine, Registry.CurrentUser };
+        string[] locations = new string[]
         {
-            const string keyPath =
-                @"SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Applications";
-
-            using (RegistryKey key = Registry.LocalMachine.OpenSubKey(keyPath))
+            @"SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Applications",
+            @"Software\Classes\Local Settings\Software\Microsoft\Windows\CurrentVersion\AppModel\Repository\Packages"
+        };
+        for (int rootIndex = 0; rootIndex < hives.Length; rootIndex++)
+        {
+            try
             {
-                if (key == null)
+                using (RegistryKey key = hives[rootIndex].OpenSubKey(locations[rootIndex]))
                 {
-                    return null;
-                }
-
-                const string prefix = "MicrosoftCorporationII.WinAppRuntime.Main.1.8_";
-                string[] names = key.GetSubKeyNames();
-                for (int i = 0; i < names.Length; i++)
-                {
-                    if (names[i].StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                    if (key == null)
                     {
-                        string remainder = names[i].Substring(prefix.Length);
-                        int end = remainder.IndexOf('_');
-                        return end >= 0 ? remainder.Substring(0, end) : remainder;
+                        continue;
+                    }
+
+                    string[] names = key.GetSubKeyNames();
+                    for (int i = 0; i < names.Length; i++)
+                    {
+                        string version = ParseWindowsAppRuntimePackageVersion(names[i]);
+                        if (!String.IsNullOrEmpty(version)
+                            && (String.IsNullOrEmpty(best) || VersionAtLeast(version, best)))
+                        {
+                            best = version;
+                        }
                     }
                 }
             }
+            catch (Exception exception)
+            {
+                Log("读取 Windows App Runtime 注册位置失败:" + locations[rootIndex] + ":" + exception.Message);
+            }
         }
-        catch
+
+        return best;
+    }
+
+    private static string ParseWindowsAppRuntimePackageVersion(string packageName)
+    {
+        string[] prefixes = new string[]
         {
+            "MicrosoftCorporationII.WinAppRuntime.Main.1.8_",
+            "Microsoft.WindowsAppRuntime.1.8_"
+        };
+
+        for (int i = 0; i < prefixes.Length; i++)
+        {
+            if (!packageName.StartsWith(prefixes[i], StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            string remainder = packageName.Substring(prefixes[i].Length);
+            string[] parts = remainder.Split('_');
+            if (parts.Length != 4 || (parts[1] != "x64" && !(i == 0 && parts[1] == "neutral"))) return null;
+            string version = parts[0];
+            Version parsed;
+            if (Version.TryParse(version, out parsed) && parsed.Build >= 0 && parsed.Revision >= 0)
+            {
+                return version;
+            }
         }
 
         return null;
+    }
+
+    private static string WindowsAppRuntimePackagesDescription()
+    {
+        List<string> matches = new List<string>();
+        RegistryKey[] hives = new RegistryKey[] { Registry.LocalMachine, Registry.CurrentUser };
+        string[] locations = new string[]
+        {
+            @"SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Applications",
+            @"Software\Classes\Local Settings\Software\Microsoft\Windows\CurrentVersion\AppModel\Repository\Packages"
+        };
+        for (int rootIndex = 0; rootIndex < hives.Length; rootIndex++)
+        {
+            try
+            {
+                using (RegistryKey key = hives[rootIndex].OpenSubKey(locations[rootIndex]))
+                {
+                    if (key == null)
+                    {
+                        continue;
+                    }
+
+                    string[] names = key.GetSubKeyNames();
+                    for (int i = 0; i < names.Length; i++)
+                    {
+                        if (!String.IsNullOrEmpty(ParseWindowsAppRuntimePackageVersion(names[i])))
+                        {
+                            matches.Add(names[i]);
+                        }
+                    }
+                }
+            }
+            catch (Exception exception)
+            {
+                Log("读取 Windows App Runtime 包注册信息失败:" + locations[rootIndex] + ":" + exception.Message);
+            }
+        }
+
+        return matches.Count == 0 ? "(未匹配到合法 1.8 包)" : String.Join("; ", matches.ToArray());
     }
 
     private static bool IsAdministrator()

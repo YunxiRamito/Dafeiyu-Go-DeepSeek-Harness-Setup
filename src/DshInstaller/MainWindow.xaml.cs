@@ -8,6 +8,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Animation;
+using Microsoft.UI.Xaml.Media.Imaging;
 using Microsoft.UI.Xaml.Shapes;
 using Windows.Graphics;
 using WinRT;
@@ -136,7 +137,6 @@ namespace DshInstaller
         private FontIcon _closeIcon;
         private TextBlock _titleText;
         private Border _brandBadge;
-        private Path _brandMark;
         private FontIcon _languageIcon;
         private Border _footerBorder;
         private Grid _shellRoot;
@@ -316,17 +316,22 @@ namespace DshInstaller
             brand.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             brand.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
-            _brandMark = Controls.DshBrand.Mark(
-                14,
-                Theme.Brush("OnAccentBrush", Windows.UI.Color.FromArgb(255, 255, 255, 255)));
             _brandBadge = new Border
             {
                 Width = TitleBarContentHeight,
                 Height = TitleBarContentHeight,
                 CornerRadius = new CornerRadius(6),
                 VerticalAlignment = VerticalAlignment.Center,
-                Background = Theme.Brush("AccentBrush", Windows.UI.Color.FromArgb(255, 17, 17, 18)),
-                Child = _brandMark,
+                Child = new Image
+                {
+                    Source = new BitmapImage(new Uri("ms-appx:///Assets/InstallerLogo.png"))
+                    {
+                        DecodePixelWidth = 128,
+                        DecodePixelHeight = 128
+                    },
+                    Stretch = Stretch.Uniform,
+                    IsHitTestVisible = false
+                },
             };
             brand.Children.Add(_brandBadge);
 
@@ -1088,16 +1093,6 @@ namespace DshInstaller
             if (_titleText != null)
             {
                 _titleText.Foreground = secondary;
-            }
-
-            if (_brandBadge != null)
-            {
-                _brandBadge.Background = accent;
-            }
-
-            if (_brandMark != null)
-            {
-                _brandMark.Fill = onAccent;
             }
 
             if (_languageLabel != null)

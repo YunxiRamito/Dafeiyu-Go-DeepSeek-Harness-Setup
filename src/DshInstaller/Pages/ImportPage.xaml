@@ -9,6 +9,8 @@
     <controls:PageScaffold x:Name="Scaffold" Title="" Subtitle="">
         <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollMode="Disabled">
         <StackPanel Spacing="12">
+            <CheckBox x:Name="SkipMigrationBox" Visibility="Collapsed"
+                      Checked="OnSkipMigrationChanged" Unchecked="OnSkipMigrationChanged" />
 
             <!-- 第一步:挑一个备份包 -->
             <Border

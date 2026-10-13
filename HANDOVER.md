@@ -1,5 +1,62 @@
 # 交接:大肥鱼Go / Dafeiyu-Go
 
+## 2026-10-13 安装器 1.8.0 官方版迁移最终交付（优先于下方历史）
+
+本轮安装器最终包已通过发布前验收，GitHub 发布待执行；启动器仅本地编译，网页和手机端不在本轮范围。用户指定 Release 正文保持单行：`修复检测不到安装组件的潜在bug`。
+
+- 最终包：`../Temp_SetupandLauncher/OfficialMigration-20261013/Installer-Release180/DSH-Installer-Setup.exe`，11,656,818 字节；SHA-256 `ADC2AAFAC2A420726158533D108A67C26286096CE01F4F55EE49F0B6C4164E3C`。Boot、内部安装器和卸载器均为 1.8.0.0；打包 7/7 与内置自检通过。
+- Runtime 检测独立读取 HKLM/HKCU，接受合法的 Main/framework 1.8 包及正确架构，取最高版本；错误 `0x8007177E` 的 EFS 策略诊断保留。未在反馈用户的真实电脑复现或修改其策略。
+- 官方版按 HKCU/HKLM、32/64 位卸载注册表定位，接受名称附带语义版本，联合验证 `resources/app.asar` 与 `resources/runtime/cli/bin/dsh.cmd`。没有写死目录名，排除同名 Chrome PWA。真实注册表及无 hint 查找已识别本机官方安装。
+- 多个 DSH 明确列出供用户选择。官方版只作为迁移来源，不能直接复用；用户选择“迁移官方版对话、插件和 Skill”或“全新安装 DSH”，均使用独立 npm 安装目录。来源默认 DSH_HOME/用户 .dsh，可展开更改；提权计划保留原用户来源和设置路径。
+- 安装后自动预览迁移并明确确认，desktop profile 默认迁至 web；未导入时须明确勾选跳过才能结束。会话包含 storages/attachments；保留目标同名数据并跳过冲突，保留官方安装及源数据。拒绝来源/目标嵌套、重解析路径及运行中的官方源；只迁移允许的数据，不迁移根凭据、环境配置或 desktop app bundle。无法携带的本地插件依赖会明确警告。
+- 兼容在线稳定启动器 1.7.5：成功安装后备份原用户 LauncherSettings.json，再更新本次明确选择的 DSH/Node 路径，保留其他偏好与凭据；切换本体只清除旧 DSH API key 缓存。启动器运行中不强写设置，而是在完成页提示退出并重新选择。新本地启动器另支持 schema2 一次性来源选择及正确 Skill/插件根目录。
+- 安装器 ICO 和窗口 logo 使用用户提供的第二张图；启动器保持原图案压缩。InstallerLogo 14,215B；安装器 ICO 73,779B；启动器 ICO 59,483B、Info ICO 22,169B、PNG 148,387B（原 5,088,686B）。
+- 验收：检测/Runtime 87 项、迁移与安装相关 352 项、稳定启动器选择 13 项、本地启动器来源/Node 62 项、插件/Skill 115 项、Windows 原生图标 27 帧通过。最终真实 WinUI/UIA 7 项及两张截图通过，见 `../Temp_SetupandLauncher/OfficialMigration-20261013/UiSmokeFinal5/`；验收脚本已等待 UI 异步布局和有效窗口尺寸。导入/发现双仓源码一致门禁通过。
+- 未执行真实用户数据迁移、真实替代用户 UAC、物理 Windows10 或故障用户机器复测；文件/附件测试不等于在 DSH 内实际打开全部历史附件和第三方插件。
+
+综合报告：`../Temp_SetupandLauncher/OfficialMigration-20261013/REPORT.md`。只发布本安装器；启动器含其他任务未发布工作，不能直接将其整个工作区提交发布。
+
+## 2026-10-13 浏览器安装后 Runtime 识别修复
+
+用户反馈“已经通过浏览器安装 Windows App Runtime，但安装器仍显示缺少”。此前探测只读取：
+
+- `HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Applications`
+- `MicrosoftCorporationII.WinAppRuntime.Main.1.8_` 包名前缀
+
+这会漏掉按当前用户注册的 AppX 包，以及使用 `Microsoft.WindowsAppRuntime.1.8_` 前缀的合法 1.8 包。现在 `boot/Boot.cs` 与 `src/DshInstaller.Shared/Detection/EnvironmentProbe.cs` 统一检查全局 AllUserStore 和当前用户 Package Repository，接受两种合法包前缀，解析全部版本并取最高版本；只接受带有合法四段版本号的主 Runtime 包，不会把无关包或 DDLM 包当成 Runtime。
+
+启动器初始日志和运行库安装失败日志还会记录实际匹配到的包名，便于区分“浏览器只下载了 EXE”“AppX 没有注册”“探测逻辑漏包”和“EFS 策略阻止安装”。
+
+v3 隔离构建结果：
+
+- EXE：`../Temp_SetupandLauncher/Installer-EFS-Fix-20261013-v3/DSH-Installer-Setup.exe`
+- SHA-256：`A512A096BEE3DD4B60EE5F27E4057ABEBC35F988357C239226AA5D5DDB390BD8`
+- `pack-release.ps1 -NoDesktop`：7/7 步骤成功，自检通过
+- `DshInstaller.Shared`：构建成功，0 警告、0 错误
+- Probe：当前用户与全局包均可识别，报告 `8000.994.2142.0`，必需组件全部就绪
+- 当前未发布、未上传 Release
+
+## 2026-10-13 Windows App Runtime 安装失败诊断与本地修复
+
+其他用户反馈引导日志反复出现：
+
+```text
+Windows App Runtime 退出码 = -2147018882
+Windows App Runtime 装完还是不达标: .NET=8.0.31 / WinAppRuntime=(缺)
+```
+
+`-2147018882` 等于 `0x8007177E`，Windows 错误为 `ERROR_VOLUME_NOT_SUPPORT_EFS (6014)`，含义是安装过程使用的工作目录或暂存卷不支持文件加密。日志显示运行库下载已经完成，失败发生在 `windowsappruntimeinstall-x64.exe --quiet` 执行阶段，不是下载校验失败。
+
+本地修复位于 `boot/Boot.cs`：运行库安装进程现在显式使用下载文件所在的 `%TEMP%` 目录作为 `WorkingDirectory`，不再继承用户启动 Setup 时的当前目录；同时记录当前目录、TEMP 和安装包所在卷的文件系统及剩余空间。遇到 `0x8007177E` 时会给出针对“不支持 EFS 的 U 盘、网络盘、虚拟盘或系统策略”的提示，而不是让用户无信息地重复安装。
+
+隔离构建结果：
+
+- EXE：`../Temp_SetupandLauncher/Installer-EFS-Fix-20261013-v1/DSH-Installer-Setup.exe`
+- SHA-256：`11F084BD79A9BFCFF3A620B3AA3304DD28772F0E9D23B60AF0072256A7F6FA20`
+- 构建步骤 1/7 至 7/7 成功；当前未发布、未上传 Release。
+
+如果该用户使用修复版仍失败，需要从最新 `%TEMP%\dsh-boot.log` 提供新增的“Windows App Runtime 安装环境”一行，并在其机器执行 `fsutil fsinfo volumeinfo C:`、`fsutil behavior query disableencryption`，确认系统盘/TEMP 所在卷和 EFS 策略。不要先修改注册表或强行关闭安全策略。
+
 ## 2026-10-10 12:40 v1.7.3 已发布（本节优先）
 
 - Release：`https://github.com/YunxiRamito/Dafeiyu-Go-DeepSeek-Harness-Setup/releases/tag/v1.7.3`（id `408645721`，tag v1.7.3 → `07e0555`）。

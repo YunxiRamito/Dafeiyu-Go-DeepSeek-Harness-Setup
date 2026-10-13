@@ -1,7 +1,7 @@
 <Project>
   <PropertyGroup>
-    <InstallerVersion>1.7.3</InstallerVersion>
-    <InstallerVersionFull>1.7.3.0</InstallerVersionFull>
+    <InstallerVersion>1.8.0</InstallerVersion>
+    <InstallerVersionFull>1.8.0.0</InstallerVersionFull>
     <!--
       安装器和启动器独立比对各自更新版本；这里的 LauncherVersion 仅保留构建兼容字段。
     -->

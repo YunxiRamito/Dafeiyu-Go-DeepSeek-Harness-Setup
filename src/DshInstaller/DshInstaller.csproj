@@ -8,7 +8,7 @@
     <RootNamespace>DshInstaller</RootNamespace>
     <AssemblyName>DSH-Installer</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <!-- 图标由 tools\make-icon.ps1 生成(圆角蓝底 + 白色鲸鱼) -->
+    <!-- Installer icon and title-bar logo are encoded from the supplied user artwork. -->
     <ApplicationIcon>..\..\assets\DSHInstaller.ico</ApplicationIcon>
     <Platforms>x64</Platforms>
     <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
@@ -54,6 +54,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\DshInstaller.Shared\DshInstaller.Shared.csproj" />
+    <Content Include="..\..\assets\InstallerLogo.png" Link="Assets\InstallerLogo.png" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

@@ -1902,6 +1902,18 @@ namespace DshInstaller.Shared.Install
             if (o.InstallLauncher && !ConfigStore.SaveLauncherDefaults(o.LauncherRoot, o.DshRoot, o.SourcePreference))
                 context.Log("未能保存启动器默认下载源。");
             InstallManifest.Write(o, WellKnown.InstallerVersion, context.Log);
+            if (o.InstallLauncher)
+            {
+                try
+                {
+                    string backup = LauncherSelection.Apply(o);
+                    if (backup != null) context.Log("启动器已切换至所选 DSH；原设置备份：" + backup);
+                }
+                catch (Exception exception)
+                {
+                    context.Warn("启动器设置未切换，请在启动器设置中选择本次 DSH 目录：" + o.DshRoot + "。" + exception.Message);
+                }
+            }
 
             // 记下这次装到了哪里。卸载器完全依赖这份状态才知道该删什么 ——
             // 不能靠"按默认路径重新猜",用户可能把组件装到别处。

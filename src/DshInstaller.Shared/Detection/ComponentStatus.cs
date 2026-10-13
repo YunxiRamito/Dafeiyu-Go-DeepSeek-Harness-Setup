@@ -81,6 +81,9 @@ namespace DshInstaller.Shared
 
         public List<ComponentStatus> Components { get; } = new List<ComponentStatus>();
 
+        /// <summary>All validated ordinary and official desktop installations for explicit user selection.</summary>
+        public List<DshInstallation> DshInstallations { get; } = new List<DshInstallation>();
+
         public ComponentStatus this[string id]
         {
             get

@@ -138,6 +138,14 @@ namespace DshInstaller
         /// <summary>本机已有 DSH,直接用现有的、跳过下载。</summary>
         public bool UseExistingDsh { get; set; }
 
+        public string DshChoice { get; set; }
+        public string SelectedDshRoot { get; set; }
+        public string OfficialMigrationInstallRoot { get; set; }
+        public string OfficialMigrationHome { get; set; }
+        public string LauncherSettingsFile { get; } = System.IO.Path.Combine(
+            Environment.GetEnvironmentVariable("DAFEIYU_LAUNCHER_SETTINGS_DIRECTORY") ?? ConfigStore.ConfigDirectory,
+            "LauncherSettings.json");
+
         /// <summary>下载源偏好:国内镜像还是官方。</summary>
         public string SourcePreference { get; set; } = MirrorSource.China;
 

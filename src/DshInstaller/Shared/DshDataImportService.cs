@@ -26,6 +26,8 @@ namespace DeepSeekHarnessLauncher.Backup
         internal List<string> Warnings = new List<string>();
         internal HashSet<string> UnavailableModules = new HashSet<string>(StringComparer.Ordinal);
         internal bool ForExport;
+        internal Action<string, double> PreviewProgress;
+        internal long LastPreviewProgress;
     }
 
     internal sealed class OfficialImportFile
@@ -55,12 +57,12 @@ namespace DeepSeekHarnessLauncher.Backup
 
         internal static string ResolveSourceHome(string selected)
         {
-            string root = Path.GetFullPath(selected ?? throw new ArgumentNullException(nameof(selected)));
+            string root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(selected ?? throw new ArgumentNullException(nameof(selected))));
             RequirePlainAncestors(root);
             if (!Directory.Exists(root)) throw new DirectoryNotFoundException("所选目录不存在。");
             string nested = Path.Combine(root, ".dsh");
             if (Directory.Exists(nested)) root = nested;
-            if (!new[] { "profiles", "sessions", "storages", "skills", "plugins" }.Any(name => Directory.Exists(Path.Combine(root, name))))
+            if (!new[] { "profiles", "sessions", "storages", "attachments", "skills", "plugins" }.Any(name => Directory.Exists(Path.Combine(root, name))))
                 throw new InvalidDataException("没有找到官方 DSH 数据，请选择包含 profiles、sessions 或 skills 的 .dsh / DSH_HOME 目录。");
             RequirePlainAncestors(root);
             return root;
@@ -75,11 +77,13 @@ namespace DeepSeekHarnessLauncher.Backup
                 && File.Exists(Path.Combine(path, "package.json"))).Select(Path.GetFileName).OrderBy(name => name, StringComparer.OrdinalIgnoreCase).ToList();
         }
 
-        internal static OfficialImportPlan Preview(string selected, string targetHome, string sourceProfile, string targetProfile, CancellationToken token, string legacyRoot = null, bool forExport = false)
+        internal static OfficialImportPlan Preview(string selected, string targetHome, string sourceProfile, string targetProfile, CancellationToken token, string legacyRoot = null, bool forExport = false, Action<string, double> progress = null)
         {
-            var plan = new OfficialImportPlan { SourceHome = ResolveSourceHome(selected), TargetHome = Path.GetFullPath(targetHome),
-                SourceProfile = ValidateProfile(sourceProfile), TargetProfile = ValidateProfile(targetProfile), ForExport = forExport };
-            string selectedRoot = Path.GetFullPath(legacyRoot ?? selected);
+            token.ThrowIfCancellationRequested();
+            var plan = new OfficialImportPlan { SourceHome = ResolveSourceHome(selected), TargetHome = Path.TrimEndingDirectorySeparator(Path.GetFullPath(targetHome)),
+                SourceProfile = ValidateProfile(sourceProfile), TargetProfile = ValidateProfile(targetProfile), ForExport = forExport,
+                PreviewProgress = progress, LastPreviewProgress = Environment.TickCount64 - 100 };
+            string selectedRoot = Path.TrimEndingDirectorySeparator(Path.GetFullPath(legacyRoot ?? selected));
             if (!PathComparer.Equals(selectedRoot, plan.SourceHome))
             {
                 RequirePlainAncestors(selectedRoot);
@@ -88,9 +92,9 @@ namespace DeepSeekHarnessLauncher.Backup
                 plan.LegacyRoot = selectedRoot;
             }
             if (!forExport) RequirePlainAncestors(plan.TargetHome);
-            if (!forExport && (Contains(plan.SourceHome, plan.TargetHome) || Contains(plan.TargetHome, plan.SourceHome)))
-                throw new InvalidDataException("来源和目标目录不能相同，也不能互相包含。");
-            AddGroup(plan, "sessions", "对话记录", new[] { "sessions", "storages" }, token);
+            if (!forExport) RequireSeparateRoots(plan);
+            // Session logs hold durable references to objects under attachments/v1.
+            AddGroup(plan, "sessions", "对话记录", new[] { "sessions", "storages", "attachments" }, token);
             AddGroup(plan, "skills", "技能", new[] { "skills" }, token);
             AddGroup(plan, "plugins", "插件文件与启用清单", new[] { "plugins" }, token);
             if (plan.LegacyRoot != null)
@@ -111,6 +115,7 @@ namespace DeepSeekHarnessLauncher.Backup
                 plan.ManifestExists = true;
                 AddPluginModules(plan, Path.Combine(profile, "node_modules"), token);
                 AddPluginModules(plan, Path.Combine(plan.SourceHome, "profiles", "node_modules"), token);
+                AddLocalDependencies(plan, profile, token);
             }
             if (plan.ManifestExists && !plan.Groups.Any(group => group.Id == "plugins"))
                 plan.Groups.Add(new OfficialImportGroup { Id = "plugins", Name = "插件文件与启用清单" });
@@ -136,7 +141,7 @@ namespace DeepSeekHarnessLauncher.Backup
                 {
                     string relative = Path.Combine(root, Path.GetFileName(entry));
                     if (plan.Files.Any(file => PathComparer.Equals(file.Unit, relative))) continue;
-                    Collect(plan, id, entry, relative, root == "storages" ? null : relative, new HashSet<string>(PathComparer), token);
+                    Collect(plan, id, entry, relative, root == "storages" || root == "attachments" ? null : relative, new HashSet<string>(PathComparer), token);
                 }
             }
             if (plan.Files.Count > before && !plan.Groups.Any(group => group.Id == id)) plan.Groups.Add(new OfficialImportGroup { Id = id, Name = name });
@@ -175,20 +180,66 @@ namespace DeepSeekHarnessLauncher.Backup
         private static void AddModule(OfficialImportPlan plan, string source, string name, CancellationToken token)
         {
             if (DefaultBundles.Contains(name)) return;
+            ValidateModuleName(name);
             string unit = Path.Combine("profiles", plan.TargetProfile, "node_modules", name.Replace('/', Path.DirectorySeparatorChar));
             if (plan.Files.Any(file => PathComparer.Equals(file.Unit, unit))) return;
             int before = plan.Files.Count;
             try
             {
+                if (!Directory.Exists(ResolveWithinSource(source, plan.SourceHome, plan.LegacyRoot)))
+                    throw new InvalidDataException("本地插件不是可迁移的目录。");
                 Collect(plan, "plugins", source, unit, unit, new HashSet<string>(PathComparer), token);
+                if (plan.Files.Count == before) throw new InvalidDataException("插件目录没有可迁移文件。");
                 plan.UnavailableModules.Remove(name);
             }
-            catch (Exception exception) when (exception is IOException || exception is UnauthorizedAccessException || exception is InvalidDataException)
+            catch (Exception exception) when (exception is IOException || exception is UnauthorizedAccessException || exception is InvalidDataException
+                || exception is JsonException || exception is InvalidOperationException)
             {
                 plan.Files.RemoveRange(before, plan.Files.Count - before);
                 plan.UnavailableModules.Add(name);
                 AddWarning(plan, name, exception);
             }
+        }
+
+        private static bool IsLocalDependency(string spec) => spec.StartsWith("file:", StringComparison.OrdinalIgnoreCase)
+            || spec.StartsWith("link:", StringComparison.OrdinalIgnoreCase);
+
+        private static void AddLocalDependencies(OfficialImportPlan plan, string profile, CancellationToken token)
+        {
+            foreach (var dependency in ParseManifest(plan.Manifest)["dependencies"] as JsonObject ?? new JsonObject())
+            {
+                token.ThrowIfCancellationRequested();
+                string name = dependency.Key;
+                if (DefaultBundles.Contains(name)) continue;
+                ValidateModuleName(name);
+                string spec = dependency.Value?.GetValue<string>() ?? String.Empty;
+                if (!IsLocalDependency(spec)) continue;
+                string unit = Path.Combine("profiles", plan.TargetProfile, "node_modules", name.Replace('/', Path.DirectorySeparatorChar));
+                if (plan.Files.Any(file => PathComparer.Equals(file.Unit, unit))) continue;
+                // An uninstalled local dependency can still be portable inside the selected home.
+                string localPath = spec.Substring(spec.IndexOf(':') + 1);
+                if (String.IsNullOrWhiteSpace(localPath))
+                {
+                    plan.UnavailableModules.Add(name);
+                    AddWarning(plan, name, new InvalidDataException("本地插件路径为空。"));
+                    continue;
+                }
+                try { AddModule(plan, Path.GetFullPath(Path.Combine(profile, localPath)), name, token); }
+                catch (Exception exception) when (exception is ArgumentException || exception is NotSupportedException)
+                {
+                    plan.UnavailableModules.Add(name);
+                    AddWarning(plan, name, exception);
+                }
+            }
+        }
+
+        private static void ValidateModuleName(string name)
+        {
+            string[] parts = name.Split('/');
+            if (parts.Length > 2 || parts.Length == 2 && (!parts[0].StartsWith("@", StringComparison.Ordinal) || parts[0].Length == 1)
+                || parts.Any(part => String.IsNullOrWhiteSpace(part) || part == "." || part == ".." || part.Contains('\\')
+                    || part.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 || part.EndsWith('.') || part.EndsWith(' ')))
+                throw new InvalidDataException("插件依赖名称无效。");
         }
 
         private static void MarkScopeUnavailable(OfficialImportPlan plan, string scope, Exception exception)
@@ -212,20 +263,63 @@ namespace DeepSeekHarnessLauncher.Backup
         private static void Collect(OfficialImportPlan plan, string group, string path, string relative, string unit, HashSet<string> ancestors, CancellationToken token)
         {
             token.ThrowIfCancellationRequested();
+            if (group == "plugins" && DefaultBundles.Any(name => relative.Replace('\\', '/').EndsWith("/node_modules/" + name, StringComparison.Ordinal))) return;
             string resolved = ResolveWithinSource(path, plan.SourceHome, plan.LegacyRoot);
             if (Directory.Exists(resolved))
             {
-                if (!ancestors.Add(resolved)) throw new InvalidDataException("来源目录包含循环链接：" + relative);
+                if (!ancestors.Add(resolved))
+                {
+                    if (group == "plugins") return;
+                    throw new InvalidDataException("来源目录包含循环链接：" + relative);
+                }
                 foreach (string child in Directory.EnumerateFileSystemEntries(resolved))
                     Collect(plan, group, child, Path.Combine(relative, Path.GetFileName(child)), unit, ancestors, token);
+                string packageJson = Path.Combine(resolved, "package.json");
+                if (group == "plugins" && File.Exists(packageJson))
+                {
+                    string packagePath = ResolveWithinSource(packageJson, plan.SourceHome, plan.LegacyRoot);
+                    var package = JsonNode.Parse(File.ReadAllText(packagePath)) as JsonObject;
+                    var dependencies = (package?["dependencies"] as JsonObject ?? new JsonObject())
+                        .Concat(package?["optionalDependencies"] as JsonObject ?? new JsonObject());
+                    foreach (string dependency in dependencies.Select(pair => pair.Key).Distinct(StringComparer.Ordinal))
+                    {
+                        ValidateModuleName(dependency);
+                        if (DefaultBundles.Contains(dependency)) continue;
+                        if (Directory.Exists(Path.Combine(resolved, "node_modules", dependency))) continue;
+                        // pnpm places runtime dependency links beside the resolved package.
+                        string modules = Path.GetDirectoryName(resolved);
+                        if (Path.GetFileName(modules).StartsWith('@')) modules = Path.GetDirectoryName(modules);
+                        string sibling = Path.Combine(modules, dependency.Replace('/', Path.DirectorySeparatorChar));
+                        if (Directory.Exists(sibling))
+                            Collect(plan, group, sibling, Path.Combine(relative, "node_modules", dependency), unit, ancestors, token);
+                    }
+                }
                 ancestors.Remove(resolved);
                 return;
             }
             if (plan.Files.Count >= 250000) throw new InvalidDataException("来源文件数量超过 250000 个，请分开导入。");
             if (!plan.ForExport) Target(plan, relative);
             using var input = new FileStream(resolved, FileMode.Open, FileAccess.Read, FileShare.Read);
+            using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+            byte[] buffer = new byte[81920];
+            int read;
+            long bytes = 0;
+            while ((read = input.Read(buffer, 0, buffer.Length)) > 0)
+            {
+                token.ThrowIfCancellationRequested();
+                hash.AppendData(buffer, 0, read);
+                bytes += read;
+                long now = Environment.TickCount64;
+                if (now - plan.LastPreviewProgress >= 100)
+                {
+                    plan.LastPreviewProgress = now;
+                    plan.PreviewProgress?.Invoke("已读取 " + plan.Files.Count + " 个文件 · 正在校验 " + relative
+                        + " · " + bytes + "/" + input.Length + " B", Double.NaN);
+                }
+            }
+            token.ThrowIfCancellationRequested();
             plan.Files.Add(new OfficialImportFile { Group = group, Source = resolved, Relative = relative, Unit = unit ?? relative,
-                Length = input.Length, Hash = SHA256.HashData(input) });
+                Length = input.Length, Hash = hash.GetHashAndReset() });
         }
 
         internal static OfficialImportResult Import(OfficialImportPlan plan, IEnumerable<string> selectedGroups, Action<string, double> progress, CancellationToken token)
@@ -246,6 +340,7 @@ namespace DeepSeekHarnessLauncher.Backup
                 RequirePlainAncestors(plan.SourceHome);
                 if (plan.LegacyRoot != null) RequirePlainAncestors(plan.LegacyRoot);
                 RequirePlainAncestors(plan.TargetHome);
+                RequireSeparateRoots(plan);
                 var files = plan.Files.Where(file => selected.Contains(file.Group)).ToList();
                 var skippedUnits = new HashSet<string>(files.Select(file => file.Unit).Where(unit => Exists(Target(plan, unit))), PathComparer);
                 result.Skipped = files.Count(file => skippedUnits.Contains(file.Unit));
@@ -406,6 +501,13 @@ namespace DeepSeekHarnessLauncher.Backup
             if (!Contains(plan.TargetHome, target) || PathComparer.Equals(target, plan.TargetHome)) throw new InvalidDataException("导入路径超出目标数据目录。");
             RequirePlainAncestors(target);
             return target;
+        }
+
+        private static void RequireSeparateRoots(OfficialImportPlan plan)
+        {
+            string source = plan.LegacyRoot ?? plan.SourceHome;
+            if (Contains(source, plan.TargetHome) || Contains(plan.TargetHome, source))
+                throw new InvalidDataException("来源和目标目录不能相同，也不能互相包含。");
         }
 
         private static bool Exists(string path) => File.Exists(path) || Directory.Exists(path);

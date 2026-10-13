@@ -28,9 +28,7 @@ namespace DshInstaller
             {
                 try
                 {
-                    string directory = System.IO.Path.Combine(
-                        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                        "DeepSeekHarness");
+                    string directory = Shared.ConfigStore.ConfigDirectory;
                     System.IO.Directory.CreateDirectory(directory);
                     System.IO.File.AppendAllText(
                         System.IO.Path.Combine(directory, "installer-crash.log"),

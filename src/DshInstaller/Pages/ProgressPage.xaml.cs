@@ -99,6 +99,11 @@ namespace DshInstaller.Pages
             // 提权实例走这条路:选项是命令行里那个 plan 文件带的,不是内存里拼的
             InstallOptions options = Program.PendingPlan ?? InstallerPlan.Build();
             _options = options;
+            InstallSession.Current.DshRoot = options.DshRoot;
+            InstallSession.Current.LauncherRoot = options.LauncherRoot;
+            InstallSession.Current.ComponentsRoot = options.ComponentsRoot;
+            InstallSession.Current.OfficialMigrationInstallRoot = options.OfficialMigrationInstallRoot;
+            InstallSession.Current.OfficialMigrationHome = options.OfficialMigrationHome;
             _planPath = DevOptions.PlanPath;
 
             // 卸载与安装共用这套进度显示,只是计划不一样
@@ -188,6 +193,9 @@ namespace DshInstaller.Pages
                 DshRoot = session.DshRoot,
                 LauncherRoot = session.LauncherRoot,
                 UseExistingDsh = session.UseExistingDsh,
+                OfficialMigrationInstallRoot = session.OfficialMigrationInstallRoot,
+                OfficialMigrationHome = session.OfficialMigrationHome,
+                LauncherSettingsFile = session.LauncherSettingsFile,
                 SourcePreference = session.SourcePreference,
                 DshVersion = session.DshVersionSpec,
                 LauncherVersion = session.LauncherVersionSpec,

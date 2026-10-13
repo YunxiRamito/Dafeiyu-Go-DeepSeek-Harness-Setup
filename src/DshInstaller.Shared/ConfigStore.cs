@@ -237,7 +237,9 @@ namespace DshInstaller.Shared
                 string path = Path.Combine(launcherRoot, "installer-defaults.json");
                 string json = JsonSerializer.Serialize(new
                 {
-                    SchemaVersion = 1,
+                    SchemaVersion = 2,
+                    SelectionId = Guid.NewGuid().ToString("N"),
+                    LauncherRoot = Path.GetFullPath(launcherRoot),
                     DshRoot = Path.GetFullPath(dshRoot),
                     SourcePreference = source
                 }, Options);
