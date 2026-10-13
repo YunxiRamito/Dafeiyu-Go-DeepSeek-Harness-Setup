@@ -107,6 +107,13 @@ namespace DshInstaller.Shared.Backup
         internal static string GetWritableCacheRoot()
         {
             var candidates = new List<string>();
+            string isolated = Environment.GetEnvironmentVariable("DAFEIYU_BACKUP_WORK_DIRECTORY");
+            if (!String.IsNullOrWhiteSpace(isolated))
+            {
+                string root = Path.GetFullPath(isolated);
+                Directory.CreateDirectory(root);
+                return root;
+            }
             string local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
             if (!String.IsNullOrWhiteSpace(local)) candidates.Add(Path.Combine(local, "DeepSeekHarness", "BackupWork"));
             string temp = Environment.GetEnvironmentVariable("TEMP");

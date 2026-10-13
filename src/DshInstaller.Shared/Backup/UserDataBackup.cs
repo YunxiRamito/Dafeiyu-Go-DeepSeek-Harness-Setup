@@ -80,6 +80,8 @@ namespace DshInstaller.Shared.Backup
 
         public const string GroupSessions = "sessions";
 
+        public const string GroupPortable = "portable";
+
         /// <summary>组定义的唯一出处:哪些目录算用户数据、包内前缀是什么、默认勾不勾。</summary>
         private sealed class GroupTemplate
         {
@@ -94,6 +96,16 @@ namespace DshInstaller.Shared.Backup
 
         private static readonly GroupTemplate[] Templates =
         {
+            new GroupTemplate
+            {
+                Id = GroupPortable,
+                NameZh = "跨端偏好、提供商与兼容历史（原样保留，含凭据）",
+                NameEn = "Portable preferences, providers and history (retained, includes credentials)",
+                RelativePath = ".dafeiyu",
+                ArchivePrefix = ".dafeiyu",
+                AdditionalPrefixes = Array.Empty<string>(),
+                ByDefault = true,
+            },
             new GroupTemplate
             {
                 Id = GroupProfiles,
@@ -209,7 +221,9 @@ namespace DshInstaller.Shared.Backup
                         continue;
                     }
 
-                    if (Prefixes(template).Any(prefix => String.Equals(path, prefix, StringComparison.OrdinalIgnoreCase)
+                    if (template.Id == GroupPortable ? !entries[entryIndex].IsDirectory && !entries[entryIndex].IsLink
+                            && IsPortableMetadataPath(path) && !path.Split('/').Any(ExcludedDataName)
+                        : Prefixes(template).Any(prefix => String.Equals(path, prefix, StringComparison.OrdinalIgnoreCase)
                         || path.StartsWith(prefix + "/", StringComparison.OrdinalIgnoreCase))
                         || template.Id == GroupPlugins && IsDymPluginProfilePath(path))
                     {
@@ -509,6 +523,7 @@ namespace DshInstaller.Shared.Backup
             foreach (string directory in Directory.GetDirectories(root))
             {
                 token.ThrowIfCancellationRequested();
+                if (ExcludedDataName(Path.GetFileName(directory))) continue;
                 if (archiveRoot.StartsWith(".dsh/profiles", StringComparison.OrdinalIgnoreCase)
                     || archiveRoot.StartsWith("profiles", StringComparison.OrdinalIgnoreCase))
                 {
@@ -535,6 +550,8 @@ namespace DshInstaller.Shared.Backup
                 }
                 var info = new FileInfo(file);
                 string relative = archiveRoot + "/" + Path.GetFileName(file);
+                if (ExcludedDataName(info.Name) || relative.StartsWith(".dafeiyu/", StringComparison.OrdinalIgnoreCase)
+                    && !IsPortableMetadataPath(relative)) continue;
                 if (seen.Add(relative))
                 {
                     files.Add(new ExportItem { Source = file, Relative = relative });
@@ -705,6 +722,9 @@ namespace DshInstaller.Shared.Backup
 
                 for (int fileIndex = 0; fileIndex < files.Count; fileIndex++)
                 {
+                    string relative = Path.GetRelativePath(staging, files[fileIndex]).Replace('\\', '/');
+                    if (relative.Split('/').Any(ExcludedDataName)
+                        || group.Id == GroupPortable && !IsPortableMetadataPath(relative)) continue;
                     items.Add(new RestoreItem
                     {
                         Group = group,
@@ -836,6 +856,21 @@ namespace DshInstaller.Shared.Backup
 
         private static List<BackupGroup> DescribeFromArchiveDefinitions()
             => Templates.Select(template => ToGroup(template, null)).ToList();
+
+        internal static bool IsPortableMetadataPath(string path)
+        {
+            if (path is null || path.Contains('\\') || path.Contains(':') || path.Split('/').Any(part => part.Length == 0 || part == "." || part == "..")) return false;
+            return path is ".dafeiyu/preferences/pc.json" or ".dafeiyu/preferences/android.json"
+                or ".dafeiyu/config/providers.json" or ".dafeiyu/config/credentials.json"
+                or ".dafeiyu/android/workspace.json"
+                || path.StartsWith(".dafeiyu/android/model-history/", StringComparison.Ordinal)
+                    && path.EndsWith(".json", StringComparison.Ordinal);
+        }
+
+        private static bool ExcludedDataName(string name) => new[] { ".git", ".cache", "aries", "aries-identity",
+            "aries-groups", "connection-identity", "connection-cache", "push-tokens", "identity.json",
+            "device-identity.json", "pairing.json", "node-pin.json", "private-key.json", "private_key.pem",
+            "id_ed25519", "id_rsa", "aries-identity.dpapi" }.Contains(name, StringComparer.OrdinalIgnoreCase);
 
         private static bool IsProfileModulePath(string path) => (path.StartsWith(".dsh/profiles/", StringComparison.OrdinalIgnoreCase)
             || path.StartsWith("profiles/", StringComparison.OrdinalIgnoreCase)) && path.Contains("/node_modules/", StringComparison.OrdinalIgnoreCase);
