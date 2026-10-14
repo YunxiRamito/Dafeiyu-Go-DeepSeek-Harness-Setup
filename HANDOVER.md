@@ -1,5 +1,21 @@
 # 交接:大肥鱼Go / Dafeiyu-Go
 
+## 2026-10-14 安装器 1.8.1 已发布（本节优先）
+
+按用户明确授权，仅发布 Setup。本地待发布记录已被本节覆盖；复用已验收 EXE，未重新构建或修改字节，未改 Launcher/root/后端/credentials，也未执行真实安装或用户数据迁移。
+
+- Release：`https://github.com/YunxiRamito/Dafeiyu-Go-DeepSeek-Harness-Setup/releases/tag/v1.8.1`，id `412659374`；非草稿、非预发布，latest 指向该 Release。
+- tag v1.8.1 指向源码提交 `1d56a06314c6b34089a5ae07f53e8a8714ac4772`；隔离 clone selective 提交本轮功能、版本和文档并普通推送，无 force，无覆盖共享 staged/工作区；tag 不移动到后续交接提交。
+- 资产 `DSH-Installer-Setup.exe`，id `640227841`，11,808,313 字节；SHA-256 `35B384F18BE0E35E37AAF69F3BABD47FD58E72974B423E0659824B2DB783E814`。本地、API实际下载、公开URL实际下载一致。
+- Authenticode **NotSigned**；外层/内部/卸载器版本1.8.1.0。Compose固定文案不能表示SignPath签名。
+- `docs/CHANGELOG.md` 1.8.1与GitHub正文使用用户指定原文，标题“安装器 · 2026-10-14 · 本地构建，已发布”，正文exact读回匹配 `Publish-20261014/UPDATE-LOG.md` 的安装器段。
+- 创建tag前临时禁用Setup release workflow `361978115`，阻止CI重建覆盖本地资产，结束后恢复原状态active；最终CI查询见 `Setup/ci-verification.json`。未改旧Release/tag/资产。
+- 第一次公开读取获得265,464字节HTML，未计成功；随后同一公开URL及带cacheBust读取均取得正确EXE。未重复上传、删除或覆盖资产，不能断言具体缓存故障源。
+- 原198输入验收记录保留；发布clone核对196非文档输入内容一致，Git换行差异明确记录，CHANGELOG/HANDOVER为允许文档例外。payload68、22XBF/1PRI及各专项沿用验收结果，未重跑。本轮未真实安装/卸载/UAC/自更新/迁移，插件依赖与历史附件完整可用性仍有实际环境边界。
+- Launcher安装器更新通过Setup latest Release自动读取固定资产名，不需要同步另一个manifest；本任务没有发布Launcher。
+
+完整发布收据、API/公开下载、源码提交清单及exact正文在 `../Temp_SetupandLauncher/Publish-20261014/Setup/REPORT.md` 与同目录json/md。所有本轮发布临时文件在G盘。
+
 ## 2026-10-14 安装器 1.8.1 本地交付（本节优先）
 
 最终状态：本地交付已冻结，待发布。主 Agent 已独立核验二进制并汇总主报告；本任务最后仅保存文档，没有扩大验证或修改功能。
