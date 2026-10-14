@@ -25,6 +25,17 @@
   -->
   <ItemGroup>
     <EmbeddedResource Include="Backup\7zr.exe" />
+    <Compile Include="..\..\boot\OfficialDshRestore\Protocol.cs" Link="Backup\Official\Protocol.cs" />
+    <Compile Include="..\..\boot\OfficialDshRestore\Migration.cs" Link="Backup\Official\Migration.cs" />
+    <Compile Include="..\..\boot\OfficialDshRestore\Json.cs" Link="Backup\Official\Json.cs" />
+    <EmbeddedResource Include="$(IntermediateOutputPath)OfficialRestoreTemplate\OfficialDshRestore.exe" LogicalName="DshInstaller.OfficialDshRestore.exe" />
   </ItemGroup>
+
+  <Target Name="BuildOfficialDshRestoreTemplate" BeforeTargets="PrepareForBuild" Condition="'$(DesignTimeBuild)' != 'true'">
+    <PropertyGroup>
+      <OfficialRestoreOutput>$([System.IO.Path]::GetFullPath('$(IntermediateOutputPath)OfficialRestoreTemplate'))</OfficialRestoreOutput>
+    </PropertyGroup>
+    <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\..\..\boot\OfficialDshRestore\build.ps1&quot; -OutputDirectory &quot;$(OfficialRestoreOutput)&quot;" />
+  </Target>
 
 </Project>

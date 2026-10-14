@@ -1,5 +1,28 @@
 # 交接:大肥鱼Go / Dafeiyu-Go
 
+## 2026-10-14 安装器 1.8.1 本地交付（本节优先）
+
+最终状态：本地交付已冻结，待发布。主 Agent 已独立核验二进制并汇总主报告；本任务最后仅保存文档，没有扩大验证或修改功能。
+
+用户要求将安装器从 1.8.0 升至 1.8.1 并交付 EXE，不发布。本任务仅改版本文件、Setup 更新日志与本交接文档；保留工作区原有官方导出/还原及卸载改动，未编辑 Launcher 源码，未提交、推送、改公开 manifest 或使用 CI。
+
+- 最终 EXE：`../Temp_SetupandLauncher/Delivery-20261014/Installer/DSH-Installer-Setup-1.8.1.exe`，11,808,313 字节；SHA-256 `35B384F18BE0E35E37AAF69F3BABD47FD58E72974B423E0659824B2DB783E814`。外层、内部安装器、共享库及独立/嵌入卸载器文件与程序集版本均为 1.8.1.0，产品版本 1.8.1。
+- **最终 Authenticode 为 NotSigned。** Compose 日志固定写“使用 SignPath 已签名 payload”，本轮未签名、未执行 SignPath、未启用 RequireSignedPayload，勿依据该文案宣称已签名。
+- 相对 tag v1.8.0 的新增主要为卸载前 DYM / 官方迁移 EXE 导出、独立官方还原工具与导出/卸载导航门槛；Runtime 检测修复已在 1.8.0，未重复写为新增。源码日志 `docs/CHANGELOG.md`，供主 Agent 合并的 `Installer-CHANGELOG.md` 在交付目录。
+- 在交付目录 BuildSource 快照用现有 `pack-release.ps1 -NoDesktop -OutputDirectory` 本机构建，所有本任务缓存/临时/输出在 G 盘。初次 MSBuild powershell.exe 9009 已通过精简 PATH 解决。原 All 阶段删除 RID 目录时丢失 XBF，最终从本轮输出补齐全部22 XBF/1 PRI，再用 Compose 重组；仓库打包脚本未改。
+- 68 个 payload 文件及最终附加 ZIP 逐项大小/SHA-256、资源与版本一致；只读 PE manifest 确认外层 requireAdministrator / 内部 asInvoker。198 个构建输入在最终 UI 后与收据一致；随后仅追加本交接文档。
+- 七组已有核心专项 274 项与最终负载中英文 UIA 各31项，共336项通过。核心回归使用最终共享 DLL 或生产导入源码；七组构建0 warnings / 0 errors。导入/发现双仓一致通过。UI仅操作自己创建的隔离进程，两轮fixture已清理，应用进程退出；没有关闭其他日常窗口。
+- 未真实安装/卸载/UAC/运行库安装/自更新/迁移，未在真实官方 DSH 验证全部历史附件与插件；部分插件需官方命令重建依赖。安装器仍按需联网获取运行库/启动器，不内嵌本轮本地 Launcher，不代表全离线安装。未补跑本轮独立 WPF 还原 UI，历史证据不可代替。
+
+完整报告、签名说明、复现脚本、源码/负载收据、日志与截图均在 `../Temp_SetupandLauncher/Delivery-20261014/Installer/REPORT.md` 及同目录。主 Agent 可直接汇总该目录产物；按用户最后要求不扩大验证。
+
+## 2026-10-14 启动器窗口与导出联动验收
+
+启动器 1.8.0 仍未发布。本仓安装器的官方 DSH 导出、DYM 导出和卸载流程已用 `Installer-Final2` 做中英文 UIA 验收；官方还原自解压窗口保持无 WinUI 3 依赖的独立实现，文件夹按钮使用 Shell 图标。安装器候选和证据由启动器交接文档中的 `WindowAndExport-20261013` 目录记录。
+
+- 官方导出核心 37/37、中文/英文导出 UI 各 31/31 通过；官方 desktop profile 使用真实确认的 `@deepseek-ai/dsh-base` + `@deepseek-ai/dsh-web-app`，保留已有 manifest bundles。
+- 本轮未修改真实 `G:\DSH_Official`、用户数据、凭据或注册表；所有 fixture 和临时输出位于上级 `Temp_SetupandLauncher`。
+
 ## 2026-10-13 安装器 1.8.0 官方版迁移最终交付（优先于下方历史）
 
 本轮安装器已正式发布 GitHub v1.8.0；启动器仅本地编译，网页和手机端不在本轮范围。用户指定 Release 正文保持单行：`修复检测不到安装组件的潜在bug`。

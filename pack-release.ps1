@@ -42,6 +42,8 @@ $assets = Join-Path $root 'assets'
 $dist = if ([string]::IsNullOrWhiteSpace($OutputDirectory)) { Join-Path $root 'dist' }
     else { [IO.Path]::GetFullPath($OutputDirectory) }
 New-Item -ItemType Directory -Path $dist -Force | Out-Null
+$env:TEMP = $dist
+$env:TMP = $dist
 $publishDir = Join-Path $dist 'selfcontained'
 $payloadZip = Join-Path $dist 'payload.zip'
 $bootExe = Join-Path $dist 'DSH-Installer-Setup.exe'
@@ -100,6 +102,8 @@ if (-not (Test-Path -LiteralPath $icon)) {
 }
 
 if ($buildPayload) {
+    # The shared assembly embeds the Framework WPF restore template. Fail early if it cannot compile.
+    & (Join-Path $bootDir 'OfficialDshRestore\build.ps1') -OutputDirectory (Join-Path $dist '_official-restore-template')
     Write-Host '[1/7] 框架依赖发布(不带 .NET 运行时,运行库由引导程序按需装)' -ForegroundColor Cyan
 
     # Only release processes loaded from this build output directory.

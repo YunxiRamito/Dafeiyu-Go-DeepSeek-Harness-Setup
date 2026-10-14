@@ -151,6 +151,17 @@ namespace DshInstaller
 
         public MainWindow()
         {
+            string smokeRoot = InstallSession.ExportUiSmokeRoot;
+            if (smokeRoot != null)
+            {
+                var session = InstallSession.Current;
+                session.Mode = SessionMode.Uninstall;
+                session.DshRoot = System.IO.Path.Combine(smokeRoot, "install");
+                session.LauncherRoot = System.IO.Path.Combine(smokeRoot, "launcher");
+                session.ComponentsRoot = System.IO.Path.Combine(smokeRoot, "components");
+                session.ExportSourceHome = System.IO.Path.Combine(smokeRoot, "home");
+                session.ExportTargetDirectory = System.IO.Path.Combine(smokeRoot, "output");
+            }
             RegisterPages();
             BuildUi();
             ConfigureWindow();
@@ -163,6 +174,8 @@ namespace DshInstaller
             {
                 start = WizardPage.Uninstall;
             }
+            if (smokeRoot != null && start != WizardPage.Export && start != WizardPage.Uninstall && start != WizardPage.UninstallItems && start != WizardPage.Failed)
+                start = WizardPage.Uninstall;
 
             Navigate(start, null);
         }
@@ -247,6 +260,8 @@ namespace DshInstaller
             {
                 Type = typeof(Pages.ExportPage),
                 NextText = "继续",
+                BackOverride = WizardPage.Uninstall,
+                NextOverride = WizardPage.UninstallItems,
             };
             _pages[WizardPage.UninstallItems] = new PageInfo
             {
@@ -255,7 +270,7 @@ namespace DshInstaller
                 NextOverride = WizardPage.Progress,
 
                 // 显式指回去:否则"上一步"会按序号减一跳到失败页
-                BackOverride = WizardPage.Uninstall,
+                BackOverride = WizardPage.Export,
             };
         }
 
@@ -774,6 +789,7 @@ namespace DshInstaller
                 CornerRadius = Theme.CornerRadius("ButtonCornerRadius", 6),
             };
             _backButton.Click += OnBackClick;
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(_backButton, "WizardBack");
 
             _nextButton = new Button
             {
@@ -782,6 +798,7 @@ namespace DshInstaller
                 Height = 34,
                 CornerRadius = Theme.CornerRadius("ButtonCornerRadius", 6),
             };
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(_nextButton, "WizardNext");
             try
             {
                 object style = Application.Current.Resources["AccentButtonStyle"];
@@ -1318,10 +1335,13 @@ namespace DshInstaller
 
         internal void Navigate(WizardPage page, object parameter)
         {
-            if (_navigating)
+            if (_navigating || (_current == WizardPage.Export && InstallSession.Current.ExportInProgress))
             {
                 return;
             }
+            if (InstallSession.ExportUiSmokeRoot != null && page != WizardPage.Uninstall && page != WizardPage.Export
+                && page != WizardPage.UninstallItems && page != WizardPage.Failed)
+                throw new InvalidOperationException("Export UI smoke cannot enter execution pages.");
 
             _navigating = true;
             try
@@ -1358,6 +1378,8 @@ namespace DshInstaller
 
             IWizardPage page = _contentFrame.Content as IWizardPage;
             _nextButton.IsEnabled = page == null || page.CanGoNext;
+            if (_current == WizardPage.Export && InstallSession.Current.ExportInProgress)
+                _backButton.IsEnabled = false;
             IWizardPageCloseGuard closeGuard = page as IWizardPageCloseGuard;
             if (_closeButton != null && (closeGuard == null || closeGuard.CanClose))
             {
@@ -1475,6 +1497,10 @@ namespace DshInstaller
                     return Localization.T("btn.continue");
                 case "完成":
                     return Localization.T("btn.finish");
+                case "卸载":
+                    return Localization.T("btn.uninstall");
+                case "关闭":
+                    return Localization.IsChinese ? "关闭" : "Close";
                 default:
                     return text;
             }
@@ -1513,7 +1539,7 @@ namespace DshInstaller
             PageInfo info = _pages[_current];
 
             IWizardPage page = _contentFrame.Content as IWizardPage;
-            if (page != null && !page.OnNext())
+            if (page != null && (!page.CanGoNext || !page.OnNext()))
             {
                 return;
             }
@@ -1554,7 +1580,7 @@ namespace DshInstaller
 
         private void OnBackClick(object sender, RoutedEventArgs e)
         {
-            if (_current == WizardPage.Welcome)
+            if (_current == WizardPage.Welcome || (_current == WizardPage.Export && InstallSession.Current.ExportInProgress))
             {
                 return;
             }

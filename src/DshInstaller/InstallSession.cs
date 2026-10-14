@@ -1,4 +1,7 @@
 using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Text.Json;
 using DshInstaller.Shared;
 using DshInstaller.Shared.Install;
 
@@ -122,9 +125,166 @@ namespace DshInstaller
 
         /// <summary>
         /// 卸载前导出到的文件(导出页填)。只用来在完成页说一句"备份存在这儿",
-        /// 不参与卸载决策 —— 卸载照常进行,导不导出都不拦。
+        /// 只有实际生成文件后才填写。
         /// </summary>
         public string ExportedBackupPath { get; set; }
+
+        public string ExportSourceHome { get; set; }
+        public string ExportTargetDirectory { get; set; }
+        public bool ExportToOfficialDsh { get; set; } = true;
+        public bool ExportSucceeded { get; set; }
+        public bool ExportSkipped { get; set; }
+        public bool ExportInProgress { get; set; }
+        public List<string> ExportSelectedGroupIds { get; set; }
+
+        internal static string ExportUiSmokeRoot
+        {
+            get
+            {
+                if (!DevOptions.DryRun || Environment.GetEnvironmentVariable("DAFEIYU_EXPORT_UI_SMOKE") != "1") return null;
+                string value = Environment.GetEnvironmentVariable("DAFEIYU_EXPORT_UI_SMOKE_ROOT");
+                if (string.IsNullOrWhiteSpace(value)) throw new InvalidOperationException("Export UI smoke requires an isolated fixture root.");
+                string root = NormalizeExportPath(value);
+                if (!string.Equals(Path.GetPathRoot(root), @"G:\", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(root, Path.GetPathRoot(root), StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidOperationException("Export UI smoke requires a dedicated fixture directory on G:.");
+                foreach (string name in new[] { "DAFEIYU_INSTALLER_SETTINGS_DIRECTORY", "DAFEIYU_LAUNCHER_SETTINGS_DIRECTORY", "DAFEIYU_BACKUP_WORK_DIRECTORY", "DSH_HOME", "TEMP", "TMP", "USERPROFILE", "LOCALAPPDATA", "APPDATA" })
+                {
+                    string isolated = NormalizeExportPath(Environment.GetEnvironmentVariable(name));
+                    if (!isolated.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+                        throw new InvalidOperationException("Export UI smoke requires isolation for " + name);
+                    for (string ancestor = isolated; !string.IsNullOrEmpty(ancestor); ancestor = Path.GetDirectoryName(ancestor))
+                    {
+                        if (File.Exists(ancestor) || Directory.Exists(ancestor))
+                        {
+                            FileAttributes attributes = File.GetAttributes(ancestor);
+                            if ((attributes & FileAttributes.Directory) == 0 || (attributes & FileAttributes.ReparsePoint) != 0)
+                                throw new InvalidOperationException("Export UI smoke requires plain directories for " + name);
+                        }
+                    }
+                }
+                return root;
+            }
+        }
+
+        internal sealed class ExportHomeCandidate
+        {
+            public string Path { get; set; }
+            public string Origin { get; set; }
+        }
+
+        internal string ExportDshRoot => !string.IsNullOrWhiteSpace(DshRoot) ? DshRoot
+            : !string.IsNullOrWhiteSpace(UninstallOptions?.DshRoot) ? UninstallOptions.DshRoot : ConfigStore.Load()?.DshRoot;
+
+        internal List<ExportHomeCandidate> FindExportHomes()
+        {
+            var homes = new List<ExportHomeCandidate>();
+            void Add(string value, string origin, bool requireExisting = false)
+            {
+                if (string.IsNullOrWhiteSpace(value)) return;
+                try
+                {
+                    string path = NormalizeExportPath(value);
+                    if (requireExisting && !Directory.Exists(path)) return;
+                    var existing = homes.Find(home => string.Equals(home.Path, path, StringComparison.OrdinalIgnoreCase));
+                    if (existing == null) homes.Add(new ExportHomeCandidate { Path = path, Origin = origin });
+                    else if (!existing.Origin.Contains(origin, StringComparison.Ordinal)) existing.Origin += "; " + origin;
+                }
+                catch (ArgumentException) { }
+                catch (NotSupportedException) { }
+                catch (IOException) { }
+            }
+
+            Add(ExportSourceHome, Localization.IsChinese ? "上次选择" : "Previous selection");
+            foreach (EnvironmentVariableTarget target in ExportUiSmokeRoot != null ? new[] { EnvironmentVariableTarget.Process }
+                : new[] { EnvironmentVariableTarget.Process, EnvironmentVariableTarget.User, EnvironmentVariableTarget.Machine })
+                Add(Environment.GetEnvironmentVariable("DSH_HOME", target), "DSH_HOME (" + target + ")");
+
+            InstallerState state = ConfigStore.Load();
+            var configs = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { ConfigStore.ConfigPath, LauncherSettingsFile };
+            if (!string.IsNullOrWhiteSpace(state?.LauncherRoot)) configs.Add(Path.Combine(state.LauncherRoot, "LauncherSettings.json"));
+            foreach (string config in configs)
+            {
+                if (!File.Exists(config)) continue;
+                try
+                {
+                    using var input = File.OpenRead(config);
+                    if (input.Length > 4 * 1024 * 1024) throw new InvalidDataException("Configuration is too large: " + config);
+                    using var document = JsonDocument.Parse(input, new JsonDocumentOptions { AllowTrailingCommas = true, CommentHandling = JsonCommentHandling.Skip });
+                    void ReadHomes(JsonElement element, int depth)
+                    {
+                        if (depth > 4 || element.ValueKind != JsonValueKind.Object) return;
+                        foreach (JsonProperty property in element.EnumerateObject())
+                        {
+                            if (property.Value.ValueKind == JsonValueKind.String
+                                && (property.Name.Equals("DSH_HOME", StringComparison.OrdinalIgnoreCase)
+                                    || property.Name.Equals("DataHome", StringComparison.OrdinalIgnoreCase)
+                                    || property.Name.Equals("DshHome", StringComparison.OrdinalIgnoreCase)
+                                    || property.Name.Equals("dsh_home", StringComparison.OrdinalIgnoreCase)
+                                    || property.Name.Equals("DshHomeDirectory", StringComparison.OrdinalIgnoreCase)))
+                                Add(property.Value.GetString(), Path.GetFileName(config));
+                            else if (property.Value.ValueKind == JsonValueKind.Object) ReadHomes(property.Value, depth + 1);
+                        }
+                    }
+                    ReadHomes(document.RootElement, 0);
+                }
+                catch (Exception exception) when (exception is IOException || exception is UnauthorizedAccessException || exception is JsonException)
+                {
+                    // An unreadable explicit configuration must not turn into an apparently complete source scan.
+                    throw new InvalidDataException((Localization.IsChinese ? "无法读取数据来源配置：" : "Cannot read the data-source configuration: ") + config, exception);
+                }
+            }
+
+            string root = ExportDshRoot;
+            if (!string.IsNullOrWhiteSpace(root))
+            {
+                Add(Path.Combine(root, ".dsh"), Localization.IsChinese ? "安装目录内的数据" : "Data inside the installation", true);
+                if (Directory.Exists(Path.Combine(root, "profiles")) || Directory.Exists(Path.Combine(root, "storages")))
+                    Add(root, Localization.IsChinese ? "兼容数据目录" : "Compatible data directory", true);
+            }
+            if (ExportUiSmokeRoot == null)
+                Add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".dsh"),
+                    Localization.IsChinese ? "用户默认目录" : "Default user home", true);
+            return homes;
+        }
+
+        internal static string NormalizeExportPath(string value)
+        {
+            string path = Environment.ExpandEnvironmentVariables((value ?? string.Empty).Trim().Trim('"'));
+            if (path == "~") path = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            else if (path.StartsWith("~/", StringComparison.Ordinal) || path.StartsWith("~\\", StringComparison.Ordinal))
+                path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), path.Substring(2));
+            if (!Path.IsPathFullyQualified(path)) throw new ArgumentException(Localization.IsChinese ? "请输入完整的绝对目录路径。" : "Enter a fully qualified directory path.");
+            return Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));
+        }
+
+        internal string ValidateExportTarget(string value, string sourceHome)
+        {
+            string target = NormalizeExportPath(value);
+            InstallerState state = ConfigStore.Load();
+            var protectedRoots = new[] { ExportDshRoot, LauncherRoot, ComponentsRoot, state?.DshRoot,
+                state?.LauncherRoot, state?.ComponentsRoot, state?.InstallerHome, UninstallOptions?.DshRoot,
+                UninstallOptions?.LauncherRoot, UninstallOptions?.ComponentsRoot, UninstallOptions?.UserDataRoot,
+                sourceHome, Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".dsh") };
+            foreach (string valueRoot in protectedRoots)
+            {
+                if (string.IsNullOrWhiteSpace(valueRoot)) continue;
+                string root = NormalizeExportPath(valueRoot);
+                string prefix = Path.EndsInDirectorySeparator(root) ? root : root + Path.DirectorySeparatorChar;
+                if (string.Equals(target, root, StringComparison.OrdinalIgnoreCase) || target.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                    throw new IOException(Localization.IsChinese
+                        ? "导出目录不能位于待卸载目录或数据来源内，请选择外部目录：" + root
+                        : "Choose a destination outside the uninstall directories and the data source: " + root);
+            }
+            // Reject junctions in existing ancestors, including when the final destination does not exist yet.
+            for (string ancestor = target; !string.IsNullOrEmpty(ancestor); ancestor = Path.GetDirectoryName(ancestor))
+            {
+                if (File.Exists(ancestor)) throw new IOException(Localization.IsChinese ? "目录路径指向文件：" + ancestor : "The directory path points to a file: " + ancestor);
+                if (Directory.Exists(ancestor) && (File.GetAttributes(ancestor) & FileAttributes.ReparsePoint) != 0)
+                    throw new IOException(Localization.IsChinese ? "导出目录包含链接或 junction，请选择直接目录：" + ancestor : "Choose a directory without symbolic links or junctions: " + ancestor);
+            }
+            return target;
+        }
 
         /// <summary>各组件根目录(便携组件解压到这儿)。</summary>
         public string ComponentsRoot { get; set; }

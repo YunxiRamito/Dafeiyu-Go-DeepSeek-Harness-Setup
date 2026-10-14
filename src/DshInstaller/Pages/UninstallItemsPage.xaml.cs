@@ -26,6 +26,7 @@ namespace DshInstaller.Pages
         public UninstallItemsPage()
         {
             InitializeComponent();
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(UserDataBox, "UninstallKeepUserData");
             _state = ConfigStore.Load();
             ApplyText();
             BuildItems();
@@ -124,7 +125,7 @@ namespace DshInstaller.Pages
         {
             Scaffold.Title = Localization.T("uninstall.items.title");
             Scaffold.Subtitle = Localization.T("uninstall.items.desc");
-            Scaffold.SetSteps(3, 1);
+            Scaffold.SetSteps(3, 2);
 
             OptionsLabel.Text = Localization.T("uninstall.options");
             UserDataBox.Content = Localization.T("uninstall.userdata");

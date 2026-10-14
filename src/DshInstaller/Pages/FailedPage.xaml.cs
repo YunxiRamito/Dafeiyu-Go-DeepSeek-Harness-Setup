@@ -49,6 +49,7 @@ namespace DshInstaller.Pages
         {
             InstallReport report = InstallSession.Current.Result;
             bool cancelled = report != null && report.Cancelled;
+            bool uninstall = InstallSession.Current.Mode == SessionMode.Uninstall;
 
             Scaffold.Title = cancelled
                 ? Localization.T("failed.title.cancelled")
@@ -57,6 +58,18 @@ namespace DshInstaller.Pages
                 ? Localization.T("failed.desc.cancelled")
                 : Localization.T("failed.desc");
             Scaffold.SetStep(8);
+            if (uninstall)
+            {
+                Scaffold.Title = Localization.IsChinese
+                    ? (cancelled ? "卸载已取消" : "卸载未完成")
+                    : (cancelled ? "Uninstall canceled" : "Uninstall did not complete");
+                Scaffold.Subtitle = Localization.IsChinese
+                    ? "部分内容可能已被移除。请查看未完成步骤与日志；未完成卸载不代表已恢复原状。"
+                    : "Some items may already have been removed. Review the incomplete steps and log; an incomplete uninstall does not restore removed files.";
+                Scaffold.SetSteps(3, 2);
+                RollbackBox.Visibility = Visibility.Collapsed;
+                ManualBox.Visibility = Visibility.Collapsed;
+            }
 
             ReasonLabel.Text = Localization.T("failed.reasons");
             RollbackLabel.Text = Localization.T("failed.rollback");
