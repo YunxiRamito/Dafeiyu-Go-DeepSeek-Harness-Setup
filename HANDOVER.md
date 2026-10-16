@@ -1,5 +1,28 @@
 # 交接:大肥鱼Go / Dafeiyu-Go
 
+## 2026-10-16 导入文件夹闪退修复（本地候选，未发布）
+
+本轮响应换机用户反馈，安装器保持 1.8.1.0，只交付独立本地修复 EXE；未提交/推送/发布或覆盖原正式包。最终包 ../Temp_SetupandLauncher/Feedback-20261016/import/DSH-Installer-Setup-1.8.1-import-fix-local.exe，11,811,890 字节，SHA-256 7E601226616D7BD422115A0838E78BD45EA5E26E1D8127D8B2BE494B326FF6DC，NotSigned。
+
+- 已实证的根因：导入核心预览哈希回调传入 Double.NaN，原 SetImportProgress 经过 Math.Max/Min 后仍把 NaN 写入 WinUI ProgressBar.Value，异步 Dispatcher 回调绕过预览 try/catch。合成单 session 来源经真实原生 UI 选择后可触发 CoreMessagingXP.dll / 0xc000027b，NaN/Infinity 现转为不定进度、不赋 Value，同一路径不再崩溃。用户故障机/原包尚未复测，不能断言该机器没有其他原因。
+- 保留原确认窗口及 Profile/冲突/取消行为，补 picker/确认入口异常日志与可见错误、Shell COM 释放。新增 Setup 专用 ImportSource，不修改双仓共享导入核心：识别 .dsh / 安装根、展开的 home / data/home；独立“从官方迁移 EXE 导入”入口按已有 SFX 协议完整校验并只读解包，绝不执行选中的 EXE。临时来源位于目标安装根旁唯一目录并自动清理，凭据/环境/兼容偏好不导入且明确告知。
+- 25 新来源回归、57 既有核心导入回归通过；完整内层 Release 与本机 pack All/Compose 成功。最终包内 68 文件逐项长度/SHA一致、22 XBF/1 PRI齐全、外层附加 ZIP 与 payload.zip 完全一致。Compose 固定“签名 payload”文案不代表签名，本候选确为 NotSigned。
+- 最终负载真实 WinUI/UIA 通过 1200/800 宽布局、发现并选择来源、导入确认、空选择与重试、演练结果和关闭后导航恢复。系统 FolderPicker 的直接键鼠自动化受宿主桌面限制未通过，不冒充已验；仍需用户故障机器手动选择文件夹/迁移 EXE 复测。未真实安装/卸载/UAC、写入用户历史数据或打开其全部附件/插件。
+- 8 相关源码输入与隔离 BuildSource 哈希一致；导入核心双仓 SHA 均为 B12A714073CD9E303C3CD599675D1B02EEE43E734F8A8D872E843C5D0D75E639。全部 QA/TEMP/cache/产物位于 G 盘 Feedback-20261016/import，自建回归 fixture 已清理，只关闭自建预览进程。
+
+根因前后日志、Windows Event、UIA/截图、构建/打包收据、重建指令与明确边界见该目录 REPORT.md、package-receipt.json、final-source-receipt.json。原 2026-10-14 公开 1.8.1 资产保持不变。
+
+## 2026-10-16 跨仓交接补录：安装器仍为已发布 1.8.1
+
+本节补录 2026-10-14 最终状态，不代表再次发版。Setup **1.8.1** 沿用下方已经校验并发布的 EXE，11,808,313 字节，SHA-256 `35B384F18BE0E35E37AAF69F3BABD47FD58E72974B423E0659824B2DB783E814`，NotSigned；源码 tag `1d56a06314c6b34089a5ae07f53e8a8714ac4772`，Release ID `412659374`。最终本地文件 `../Temp_SetupandLauncher/Delivery-20261014/Installer/DSH-Installer-Setup-1.8.1.exe`。卸载前 DYM / 官方 DSH 自解压还原导出与失败页面导航修正均随该版交付。
+
+启动器纠正“三秒”作用范围后，**1.8.0 也已正式发布**；本节覆盖下方仅描述 Setup 发布任务时“本任务没有发布 Launcher”的跨仓阶段状态。三秒仅作用于主 DSH 窗口标题栏下信息栏，与独立右下角信息窗、安装器和卸载器无关。独立信息窗恢复历史 Information 8 秒规则；未因此修改或重编 Setup 1.8.1。
+
+两仓用户指定日志和本地构建发布记录保留；Setup 发布时完整公开下载校验一致、未由 CI 重建。证据 `../Temp_SetupandLauncher/Publish-20261014/Setup/publication-receipt.json` 与 `REPORT.md`。未真实验证用户安装/卸载/UAC/迁移/自更新，不把发布下载验证当成这些验收。
+
+本次只补交接，不修改功能、不改变 Release/tag/资产、不自动提交推送；历史章节保持原文。
+
+
 ## 2026-10-14 安装器 1.8.1 已发布（本节优先）
 
 按用户明确授权，仅发布 Setup。本地待发布记录已被本节覆盖；复用已验收 EXE，未重新构建或修改字节，未改 Launcher/root/后端/credentials，也未执行真实安装或用户数据迁移。
@@ -484,3 +507,14 @@ NuGet 缓存在 `G:\DeepSeek DSH\.nuget-packages`,代理 `127.0.0.1:7890`。
 - 启动器仓库的 `assets\*.zip` 每发一版会多一份 10 MB —— 攒多了要定个清理策略
 - jsDelivr 那两条 mirrors 现在还有用(缓存命中的时候 4.7 MB/s),
   但**新版本发布后要等它冷缓存**,所以只能当备胎,别当主力
+
+---
+
+## 2026-10-16 补充：正式打包 XAML 资源根目录修复
+
+- 根因：旧 `pack-release.ps1` 从 `bin/Release/<TFM>` 递归取 XBF/PRI，实际构建产物在 `win-x64` 内，复制后落成 `payload/win-x64/...`；数量检查先通过，随后清理 `win-x64` 又把全部资源删掉。仅检查 EXE 版本无法发现。
+- 修复：只从本次发布的 `bin/Release/<项目 TargetFramework>/win-x64` 取资源，保持相对于 RID 根的 `App.xbf`、`Pages/*.xbf`、`Controls/*.xbf`、`Styles/Theme.xbf` 路径；缺失时失败，不回退旧产物。框架与 PRI 名从项目文件读取，XBF 清单从实际 XAML 源码生成，新增页面自动成为必需资源，不依赖版本号或数量阈值。当前为 22 XBF + `DSH-Installer.pri`。
+- `All`、`PrepareInner`、`Compose` 均逐项校验文件存在且非空，禁止 payload 根残留 `win-x64`；打 ZIP 后再次校验精确 entry、重复/缺失/空文件；最终自解压 EXE 中的整段 payload 长度及 SHA256 必须与验收 ZIP 相同。
+- 本地回归 `tools/PackResources.Regression.ps1` 使用生产脚本 AST 提取的实际函数，12 项通过：真实隔离 RID 拷贝、30 个诱饵 XBF 仍无法掩盖缺页、空 App、缺 PRI、残留 RID、缺源先失败、新增页面、ZIP 正常/重复/缺页/残留 RID。产物位于项目 G 盘 `Temp_SetupandLauncher/Feedback-20261016/pack-resources/`。
+- 实际 `-Stage Compose -NoDesktop` 使用此前隔离 BuildSource 的 payload，仅生成新的 QA 包，无整仓编译、提交、推送或发布。`compose-verified/resource-receipt.json`：最终 EXE 提取 payload 共 68 entries，22 XBF、1 PRI，App/ImportPage 各 1，无 win-x64，提取 SHA256 与源 ZIP 相同。此 QA 包沿用现成 1.8.1 payload，不应当作新正式发行。旧 import-fix 候选 EXE 的 SHA256 仍为 `7E601226616D7BD422115A0838E78BD45EA5E26E1D8127D8B2BE494B326FF6DC`，未覆盖。
+- 改前脚本与 HANDOVER 备份：`Temp_SetupandLauncher/Feedback-20261016/pack-resources/backup/`。发布负责人必须在修后脚本已冻结后再创建 source snapshot；正式整包验收由 release owner 执行。

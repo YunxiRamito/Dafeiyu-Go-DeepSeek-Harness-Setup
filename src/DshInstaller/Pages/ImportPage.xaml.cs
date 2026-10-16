@@ -46,6 +46,7 @@ namespace DshInstaller.Pages
         private DateTime _importProgressUtc;
         private ContentDialog _importDialog;
         private bool _confirmationOpen;
+        private ImportSource _importSource;
         private CancellationTokenSource _discoveryCancellation;
         private DateTime _discoveryProgressUtc;
         private bool _migrationLoaded;
@@ -58,6 +59,14 @@ namespace DshInstaller.Pages
             BuildConflictChoices();
             ApplyText();
             Loaded += OnMigrationLoaded;
+            Loaded += delegate { Application.Current.UnhandledException += OnImportUnhandledException; };
+            Unloaded += delegate { Application.Current.UnhandledException -= OnImportUnhandledException; ReleaseImportSource(); };
+        }
+
+        private void OnImportUnhandledException(object sender, Microsoft.UI.Xaml.UnhandledExceptionEventArgs args)
+        {
+            // Record the original exception; do not mark unknown native failures as handled.
+            Shared.InstallLogger.Write("Unhandled import-page exception: " + args.Exception);
         }
 
         public bool CanGoNext
@@ -119,6 +128,7 @@ namespace DshInstaller.Pages
             PickDshButton.Content = new TextBlock { Text = dshAction, TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Center };
             Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(PickButton, dymAction);
             Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(PickDshButton, dshAction);
+            PickOfficialArchiveButton.Content = Localization.IsChinese ? "从官方迁移 EXE 导入" : "Import official migration EXE";
             DiscoverButton.Content = Localization.IsChinese ? "自动查找" : "Find existing data";
             DiscoverDrivesButton.Content = Localization.IsChinese ? "扫描其他磁盘" : "Scan other drives";
             CancelDiscoveryButton.Content = Localization.IsChinese ? "取消查找" : "Cancel search";
@@ -185,6 +195,7 @@ namespace DshInstaller.Pages
             DiscoverDrivesButton.IsEnabled = false;
             PickButton.IsEnabled = false;
             PickDshButton.IsEnabled = false;
+            PickOfficialArchiveButton.IsEnabled = false;
             StatusText.Text = String.Empty;
             DiscoveryStatus.Text = Localization.IsChinese ? "正在查找原有数据…" : "Searching for existing data…";
             _discoveryProgressUtc = DateTime.MinValue;
@@ -226,6 +237,7 @@ namespace DshInstaller.Pages
                 DiscoverDrivesButton.IsEnabled = true;
                 PickButton.IsEnabled = true;
                 PickDshButton.IsEnabled = true;
+                PickOfficialArchiveButton.IsEnabled = true;
                 App.MainWindowInstance?.RefreshChrome();
             }
             if (result == null) return;
@@ -241,6 +253,7 @@ namespace DshInstaller.Pages
                 : String.Empty;
             DshDataDiscoveryEntry selected = result.Entries.Count == 1
                 ? result.Entries[0] : await SelectDiscoveredSourceAsync(result);
+            Shared.InstallLogger.Write("Import discovery selection completed: " + selected?.Path);
             if (selected == null) return;
             if (selected.Kind == DshDataDiscoveryEntry.DymKind) await SelectDymAsync(selected.Path);
             else await SelectDshAsync(selected.Path);
@@ -316,16 +329,15 @@ namespace DshInstaller.Pages
                 return;
             }
 
-            string picked = FolderDialog.PickFile(
-                Localization.IsChinese ? "选择备份文件" : "Choose a backup file",
-                null);
-
-            if (String.IsNullOrWhiteSpace(picked))
+            try
             {
-                return;
+                string picked = FolderDialog.PickFile(
+                    Localization.IsChinese ? "选择备份文件" : "Choose a backup file",
+                    null, out string error);
+                if (!String.IsNullOrWhiteSpace(error)) throw new IOException(error);
+                if (!String.IsNullOrWhiteSpace(picked)) await SelectDymAsync(picked);
             }
-
-            await SelectDymAsync(picked);
+            catch (Exception exception) { ReportSourceFailure(exception); }
         }
 
         private async Task SelectDymAsync(string picked)
@@ -338,6 +350,7 @@ namespace DshInstaller.Pages
                 return;
             }
 
+            ReleaseImportSource();
             _archive = picked;
             PickTitle.Text = Localization.IsChinese ? "备份文件" : "Backup file";
             _officialPlan = null;
@@ -371,27 +384,53 @@ namespace DshInstaller.Pages
             {
                 SetBusy(false);
             }
-            if (_groups.Count > 0) await ShowImportConfirmationAsync(ImportDymAsync);
+            if (_groups.Count > 0) await OpenImportConfirmationAsync(ImportDymAsync);
         }
 
         private async void PickDshButton_Click(object sender, RoutedEventArgs args)
         {
             if (_busy || _discoveryCancellation != null || _confirmationOpen) return;
-            string picked = FolderDialog.Pick(
-                Localization.IsChinese ? "选择 DSH 数据文件夹" : "Choose DSH data folder", null);
-            if (String.IsNullOrWhiteSpace(picked)) return;
-            await SelectDshAsync(picked);
+            try
+            {
+                string picked = FolderDialog.Pick(
+                    Localization.IsChinese ? "选择 DSH 数据文件夹" : "Choose DSH data folder", null, out string error);
+                if (!String.IsNullOrWhiteSpace(error)) throw new IOException(error);
+                if (!String.IsNullOrWhiteSpace(picked)) await SelectDshAsync(picked);
+            }
+            catch (Exception exception) { ReportSourceFailure(exception); }
+        }
+
+        private async void PickOfficialArchiveButton_Click(object sender, RoutedEventArgs args)
+        {
+            if (_busy || _discoveryCancellation != null || _confirmationOpen) return;
+            try
+            {
+                string picked = FolderDialog.PickFile(Localization.IsChinese ? "选择官方迁移 EXE（只读导入，不执行）" : "Choose official migration EXE (read only; never executed)", null, out string error);
+                if (!String.IsNullOrWhiteSpace(error)) throw new IOException(error);
+                if (!String.IsNullOrWhiteSpace(picked)) await SelectDshAsync(picked);
+            }
+            catch (Exception exception) { ReportSourceFailure(exception); }
         }
 
         private async Task SelectDshAsync(string picked)
         {
+            Shared.InstallLogger.Write("Import source preview: " + picked);
+            using var cancellation = new CancellationTokenSource();
             ProgressPanel.Visibility = Visibility.Collapsed;
-            SetBusy(true);
+            BeginImport(cancellation);
             try
             {
-                string home = await Task.Run(() => DshDataImportService.ResolveSourceHome(picked));
-                _officialSource = picked;
+                ReleaseImportSource();
+                string target = TargetDshRoot();
+                if (String.IsNullOrWhiteSpace(target)) throw new InvalidOperationException(Localization.IsChinese ? "安装目标目录未设置。" : "The installation target is not configured.");
+                string staging = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(target)), ".dafeiyu-import-sources");
+                _importSource = await Task.Run(() => ImportSource.Open(picked, staging, cancellation.Token));
+                Shared.InstallLogger.Write("Import source resolved: " + _importSource.Home);
+                string home = _importSource.Home;
+                _officialSource = _importSource.ImportRoot;
                 List<string> profiles = await Task.Run(() => DshDataImportService.ListProfiles(home));
+                Shared.InstallLogger.Write("Import profiles read: " + profiles.Count);
+                cancellation.Token.ThrowIfCancellationRequested();
                 _fillingProfiles = true;
                 DshProfileBox.Items.Clear();
                 foreach (string profile in profiles)
@@ -400,7 +439,8 @@ namespace DshInstaller.Pages
                     profiles.FindIndex(profile => profile.Equals(MigrationRequested ? "desktop" : "default", StringComparison.OrdinalIgnoreCase)));
                 _fillingProfiles = false;
                 DshProfileBox.Visibility = profiles.Count > 1 ? Visibility.Visible : Visibility.Collapsed;
-                ArchiveText.Text = home;
+                Shared.InstallLogger.Write("Import profile controls ready.");
+                ArchiveText.Text = _importSource.DisplayPath;
                 ArchiveText.Visibility = Visibility.Visible;
                 PickTitle.Text = Localization.IsChinese ? "DSH 数据文件夹" : "DSH data folder";
                 ConflictBox.Visibility = Visibility.Collapsed;
@@ -415,14 +455,15 @@ namespace DshInstaller.Pages
                 _officialPlan = null;
                 _archive = null;
                 GroupsCard.Visibility = Visibility.Collapsed;
-                StatusText.Text = exception.Message;
+                ReleaseImportSource();
+                ReportSourceFailure(exception);
             }
             finally
             {
                 _fillingProfiles = false;
-                SetBusy(false);
+                EndImport(cancellation);
             }
-            if (_officialPlan != null) await ShowImportConfirmationAsync(() => ImportOfficialAsync(true));
+            if (_officialPlan != null) await OpenImportConfirmationAsync(() => ImportOfficialAsync(true));
         }
 
         private async void DshProfileBox_SelectionChanged(object sender, SelectionChangedEventArgs args)
@@ -430,6 +471,7 @@ namespace DshInstaller.Pages
             if (_fillingProfiles || _busy || String.IsNullOrWhiteSpace(_officialSource)) return;
             SetBusy(true);
             try { await LoadOfficialPreviewAsync(); }
+            catch (Exception exception) { ReportSourceFailure(exception); }
             finally
             {
                 SetBusy(false);
@@ -438,6 +480,7 @@ namespace DshInstaller.Pages
 
         private async Task LoadOfficialPreviewAsync()
         {
+            Shared.InstallLogger.Write("Import file preview starting.");
             using var cancellation = new CancellationTokenSource();
             BeginImport(cancellation);
             ImportProgress.IsIndeterminate = true;
@@ -455,6 +498,8 @@ namespace DshInstaller.Pages
                 string source = _officialSource;
                 _officialPlan = await Task.Run(() => DshDataImportService.Preview(source, targetHome, sourceProfile, targetProfile,
                     cancellation.Token, progress: (text, percent) => ReportImportProgress(cancellation, text, percent)));
+                if (_importSource != null) _officialPlan.Warnings.AddRange(_importSource.Warnings);
+                Shared.InstallLogger.Write("Import file preview complete: " + _officialPlan.Files.Count);
                 _officialBoxes.Clear();
                 GroupsHost.Children.Clear();
                 foreach (OfficialImportGroup group in _officialPlan.Groups)
@@ -680,6 +725,7 @@ namespace DshInstaller.Pages
             _busy = busy;
             PickButton.IsEnabled = !busy;
             PickDshButton.IsEnabled = !busy;
+            PickOfficialArchiveButton.IsEnabled = !busy;
             DiscoverButton.IsEnabled = !busy;
             DiscoverDrivesButton.IsEnabled = !busy;
             ImportButton.IsEnabled = !busy;
@@ -726,6 +772,15 @@ namespace DshInstaller.Pages
 
         private void SetImportProgress(double percent)
         {
+            // Preview hashes report NaN because no total byte count exists yet.
+            // Passing NaN/Infinity to WinUI RangeBase.Value can fail-fast in native XAML.
+            if (Double.IsNaN(percent) || Double.IsInfinity(percent))
+            {
+                ImportProgress.IsIndeterminate = true;
+                ImportProgressText.Text = Localization.IsChinese ? "正在读取…" : "Reading…";
+                return;
+            }
+            ImportProgress.IsIndeterminate = false;
             ImportProgress.Value = Math.Max(0, Math.Min(100, percent));
             ImportProgressText.Text = ImportProgress.Value.ToString("0.0") + "%";
         }
@@ -773,6 +828,26 @@ namespace DshInstaller.Pages
             List<string> items = warnings.Where(value => !String.IsNullOrWhiteSpace(value)).ToList();
             if (items.Count == 0) return String.Empty;
             return (Localization.IsChinese ? "未迁移的项目：" : "Items not migrated:") + "\n• " + String.Join("\n• ", items);
+        }
+
+        private void ReportSourceFailure(Exception exception)
+        {
+            Shared.InstallLogger.Write("Import source/confirmation failed: " + exception);
+            if (exception is OperationCanceledException) ShowImportCanceled();
+            else ShowImportFailure(exception.Message);
+        }
+
+        private void ReleaseImportSource()
+        {
+            try { _importSource?.Dispose(); }
+            catch (Exception exception) { Shared.InstallLogger.Write("Import staging cleanup failed: " + exception); }
+            _importSource = null;
+        }
+
+        private async Task OpenImportConfirmationAsync(Func<Task> import)
+        {
+            try { await ShowImportConfirmationAsync(import); }
+            catch (Exception exception) { ReportSourceFailure(exception); }
         }
 
         private async Task ShowImportConfirmationAsync(Func<Task> import)

@@ -1,4 +1,4 @@
-# 正式打包:框架依赖发布 -> 补 XAML 资源 -> 编引导/卸载器 -> 追加 payload -> 单个 Setup.exe
+﻿# 正式打包:框架依赖发布 -> 补 XAML 资源 -> 编引导/卸载器 -> 追加 payload -> 单个 Setup.exe
 #
 # 用法:
 #   .\pack-release.ps1                 打包并放到桌面
@@ -9,7 +9,7 @@
 #                                      用签名后的 payload 组装并自检最终 Setup.exe
 #
 # 产物:
-#   dist\DSH-Installer-Setup.exe   单文件安装包(用户拿到的就是这个)
+#   dist\DSH-Installer-Setup.exe   单文件安装包内部构建名；统一推包会复制为 Dafeiyu-GO-Setup <版本>.exe
 #   dist\DSH-Uninstall.exe         独立卸载程序(会被安装器铺到目标机器上)
 #   dist\payload.zip               安装器本体(自解压用的那一段)
 #   dist\selfcontained\            发布出来的安装器目录(调试用)
@@ -54,6 +54,73 @@ $versionInfoDir = Join-Path $dist '_versioninfo'
 $buildPayload = $Stage -ne 'Compose'
 $composeSetup = $Stage -ne 'PrepareInner'
 
+# XAML paths are relative to the RID output, never to its parent. The source
+# inventory also makes new pages mandatory without pinning a release version.
+function Get-InstallerXamlResources {
+    param([string]$ProjectDirectory)
+    $prefix = [IO.Path]::GetFullPath($ProjectDirectory).TrimEnd('\') + '\'
+    $resources = @(Get-ChildItem -LiteralPath $ProjectDirectory -Recurse -File -Filter '*.xaml' |
+        ForEach-Object { $_.FullName.Substring($prefix.Length) } |
+        Where-Object { $_.Replace('\', '/') -notmatch '(^|/)(bin|obj)(/|$)' } |
+        ForEach-Object { [IO.Path]::ChangeExtension($_, '.xbf') } | Sort-Object -Unique)
+    if ('App.xbf' -notin $resources) { throw 'XAML source inventory is missing App.xaml' }
+    return $resources
+}
+
+function Assert-InstallerPayloadResources {
+    param([string]$PayloadDirectory, [string[]]$XamlResources, [string]$PriName)
+    if (Test-Path -LiteralPath (Join-Path $PayloadDirectory 'win-x64')) {
+        throw 'Payload must not contain a stale win-x64 directory'
+    }
+    foreach ($relative in @($XamlResources) + @($PriName)) {
+        $path = Join-Path $PayloadDirectory $relative
+        if (-not (Test-Path -LiteralPath $path -PathType Leaf) -or (Get-Item -LiteralPath $path).Length -le 0) {
+            throw "Required XAML resource missing or empty: $relative"
+        }
+    }
+}
+
+function Copy-InstallerXamlResources {
+    param([string]$RidDirectory, [string]$PayloadDirectory, [string[]]$XamlResources, [string]$PriName)
+    # Fail before copying anything when the current build is incomplete; do not
+    # fall back to another RID, an old publish output or a resource count.
+    Assert-InstallerPayloadResources $RidDirectory $XamlResources $PriName
+    foreach ($relative in @($XamlResources) + @($PriName)) {
+        $destination = Join-Path $PayloadDirectory $relative
+        New-Item -ItemType Directory -Path (Split-Path -Parent $destination) -Force | Out-Null
+        Copy-Item -LiteralPath (Join-Path $RidDirectory $relative) -Destination $destination -Force
+    }
+    $stray = Join-Path $PayloadDirectory 'win-x64'
+    if (Test-Path -LiteralPath $stray) { Remove-Item -LiteralPath $stray -Recurse -Force }
+    Assert-InstallerPayloadResources $PayloadDirectory $XamlResources $PriName
+}
+
+function Assert-InstallerPayloadArchive {
+    param([string]$Archive, [string[]]$XamlResources, [string]$PriName)
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $zip = [IO.Compression.ZipFile]::OpenRead($Archive)
+    try {
+        $entries = @($zip.Entries)
+        if (@($entries | Where-Object { $_.FullName.Replace('\', '/') -match '^win-x64(/|$)' }).Count -gt 0) {
+            throw 'Payload archive contains a stale win-x64 directory'
+        }
+        foreach ($relative in @($XamlResources) + @($PriName)) {
+            $name = $relative.Replace('\', '/')
+            $matches = @($entries | Where-Object { $_.FullName.Replace('\', '/') -ceq $name })
+            if ($matches.Count -ne 1 -or $matches[0].Length -le 0) {
+                throw "Required XAML archive entry missing, duplicate or empty: $name"
+            }
+        }
+    } finally { $zip.Dispose() }
+}
+
+[xml]$projectXml = Get-Content -LiteralPath $proj -Raw
+$targetFramework = $projectXml.SelectSingleNode('/Project/PropertyGroup/TargetFramework').InnerText
+$assemblyName = $projectXml.SelectSingleNode('/Project/PropertyGroup/AssemblyName').InnerText
+if (-not $targetFramework -or -not $assemblyName) { throw 'Installer project framework or assembly name missing' }
+$xamlResources = @(Get-InstallerXamlResources (Split-Path -Parent $proj))
+$priName = $assemblyName + '.pri'
+
 if ($Stage -eq 'Compose') {
     if ([string]::IsNullOrWhiteSpace($SignedPayloadDirectory)) {
         throw 'Stage=Compose 必须指定 -SignedPayloadDirectory'
@@ -62,6 +129,7 @@ if ($Stage -eq 'Compose') {
         throw "签名后的 payload 目录不存在: $SignedPayloadDirectory"
     }
     $publishDir = (Resolve-Path -LiteralPath $SignedPayloadDirectory).Path
+    Assert-InstallerPayloadResources $publishDir $xamlResources $priName
 }
 
 # 版本号与产品信息只有一个来源:Directory.Build.props
@@ -127,21 +195,9 @@ if ($buildPayload) {
     if ($LASTEXITCODE -ne 0) { throw 'dotnet publish 失败' }
 
     Write-Host '[2/7] 补 .xbf / .pri(关键)' -ForegroundColor Cyan
-    $bin = Join-Path $root 'src\DshInstaller\bin\Release\net8.0-windows10.0.19041.0'
-    Get-ChildItem $bin -Recurse -Include '*.xbf', '*.pri' -ErrorAction SilentlyContinue | ForEach-Object {
-        $rel = $_.FullName.Substring($bin.Length).TrimStart('\')
-        $dst = Join-Path $publishDir $rel
-        New-Item -ItemType Directory -Path (Split-Path -Parent $dst) -Force | Out-Null
-        Copy-Item $_.FullName $dst -Force
-    }
-    $xbf = (Get-ChildItem $publishDir -Recurse -Filter '*.xbf' -ErrorAction SilentlyContinue | Measure-Object).Count
-    $pri = (Get-ChildItem $publishDir -Recurse -Filter '*.pri' -ErrorAction SilentlyContinue | Measure-Object).Count
-    Write-Host "  .xbf=$xbf  .pri=$pri"
-    if ($xbf -lt 10 -or $pri -lt 1) { throw "XAML 资源缺失(xbf=$xbf pri=$pri),打出来的包会运行不起来" }
-
-    # 去掉 publish 常见的多余子目录(和根目录资源重复,容易加载到旧的那份)
-    $stray = Join-Path $publishDir 'win-x64'
-    if (Test-Path $stray) { Remove-Item $stray -Recurse -Force }
+    $ridOutput = Join-Path (Split-Path -Parent $proj) ("bin\Release\$targetFramework\win-x64")
+    Copy-InstallerXamlResources $ridOutput $publishDir $xamlResources $priName
+    Write-Host "  已逐项校验 $($xamlResources.Count) 个 XBF 与 $priName"
 
     Write-Host '[3/7] 校验主程序' -ForegroundColor Cyan
     $exe = Join-Path $publishDir 'DSH-Installer.exe'
@@ -227,6 +283,7 @@ if ($composeSetup) {
 }
 
 if ($Stage -eq 'PrepareInner') {
+    Assert-InstallerPayloadResources $publishDir $xamlResources $priName
     $payloadExe = Join-Path $publishDir 'DSH-Installer.exe'
     $payloadUninstaller = Join-Path $publishDir 'DSH-Uninstall.exe'
     if (-not (Test-Path -LiteralPath $payloadExe)) { throw "待签名 payload 缺少 $payloadExe" }
@@ -260,8 +317,10 @@ if ($RequireSignedPayload) {
 }
 
 Write-Host '[5/7] 打 payload.zip' -ForegroundColor Cyan
+Assert-InstallerPayloadResources $publishDir $xamlResources $priName
 if (Test-Path $payloadZip) { Remove-Item $payloadZip -Force }
 Compress-Archive -Path (Join-Path $publishDir '*') -DestinationPath $payloadZip -CompressionLevel Optimal
+Assert-InstallerPayloadArchive $payloadZip $xamlResources $priName
 $zipMb = [math]::Round((Get-Item $payloadZip).Length / 1MB, 1)
 Write-Host "  payload.zip $zipMb MB"
 
@@ -285,6 +344,19 @@ Write-Host '[7/7] 自检' -ForegroundColor Cyan
 if ([System.IO.File]::ReadAllBytes($setupExe)[$bootBytes.Length] -ne 0x50) {
     throw '合成结果不对:payload 的起点不是 zip 本地头(50 4B 03 04)'
 }
+# Bind the final self-extracting EXE to the complete ZIP that passed resource
+# validation. Checking only its first byte cannot detect truncation/corruption.
+$setupStream = [IO.File]::OpenRead($setupExe)
+$payloadHasher = [Security.Cryptography.SHA256]::Create()
+try {
+    if ($setupStream.Length -ne ([long]$bootBytes.Length + $zipBytes.Length)) {
+        throw 'Final setup length differs from bootstrap plus validated payload'
+    }
+    $setupStream.Position = $bootBytes.Length
+    $actualPayloadHash = [BitConverter]::ToString($payloadHasher.ComputeHash($setupStream))
+    $expectedPayloadHash = [BitConverter]::ToString($payloadHasher.ComputeHash($zipBytes))
+    if ($actualPayloadHash -cne $expectedPayloadHash) { throw 'Final setup payload differs from validated ZIP' }
+} finally { $payloadHasher.Dispose(); $setupStream.Dispose() }
 $hash = (Get-FileHash $setupExe -Algorithm SHA256).Hash
 Write-Host "  SHA256 $hash"
 Write-Host ("  体积比自包含省了约 {0:N0} MB" -f (119.4 - $setupMb))

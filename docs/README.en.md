@@ -10,7 +10,7 @@
 
 ## Get Started
 
-1. Download `DSH-Installer-Setup.exe` from [Releases](https://github.com/YunxiRamito/Dafeiyu-Go-DeepSeek-Harness-Setup/releases/latest).
+1. Download `Dafeiyu-GO-Setup <version>.exe` from [Releases](https://github.com/YunxiRamito/Dafeiyu-Go-DeepSeek-Harness-Setup/releases/latest). The internal build/payload name remains `DSH-Installer-Setup.exe` for compatibility.
 2. Run it. If runtimes are missing, approve their download and installation, including elevation when requested.
 3. Choose your download source, scope and directories. Select optional pnpm / Git / Python, recommended plugins, shortcuts and autostart as needed.
 4. Install, then start Dafeiyu-Go and open DSH through the tray or shortcut.
@@ -58,10 +58,10 @@ Official builds are currently **unsigned**. A SmartScreen warning alone proves n
 
 ```powershell
 # Current-user installation without autostart or launch-after-install
-.\DSH-Installer-Setup.exe --silent --scope=user --source=china --pnpm --git --no-autostart --no-launch --report=install.json
+& ".\Dafeiyu-GO-Setup 1.8.2.exe" --silent --scope=user --source=china --pnpm --git --no-autostart --no-launch --report=install.json
 
 # Repair using the installation record; falls back to regular setup if absent
-.\DSH-Installer-Setup.exe --repair
+& ".\Dafeiyu-GO-Setup 1.8.2.exe" --repair
 
 # Build on Windows with .NET 8 SDK and a Windows SDK build environment
  dotnet build src\DshInstaller\DshInstaller.csproj -c Release

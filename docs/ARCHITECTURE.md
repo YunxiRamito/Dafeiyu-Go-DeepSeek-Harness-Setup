@@ -18,7 +18,7 @@ WinUI 3 未打包应用启动时必须先跑 `Microsoft.WindowsAppRuntime.Bootst
 新机器上这两个多半都没有 —— 于是有了引导程序:
 
 ```
-DSH-Installer-Setup.exe(= Boot.exe + 附加的 payload.zip)
+Dafeiyu-GO-Setup <版本>.exe(内部构建名 DSH-Installer-Setup.exe = Boot.exe + 附加的 payload.zip)
   1. 检查两个运行库(.NET 8 桌面运行时 / Windows App Runtime 1.8)
        都有 → 直接解压 + 启动主程序(全程不提权,一次 UAC 都不弹)
        缺   → 自己没提权就先 runas 起一个 --runtimes-only 的副本

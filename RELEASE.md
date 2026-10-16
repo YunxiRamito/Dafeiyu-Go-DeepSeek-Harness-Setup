@@ -25,7 +25,8 @@
 一个文件:
 
 ```
-DSH-Installer-Setup.exe     单个 exe,双击即用(约 11 MB)
+Dafeiyu-GO-Setup <版本>.exe  对外发布的单个 exe，双击即用(约 11 MB)
+DSH-Installer-Setup.exe      内部构建/payload 兼容文件名
 ```
 
 它是**引导程序 + 附加的 payload** 拼出来的:引导程序用 .NET Framework 写
@@ -74,7 +75,7 @@ git push origin v1.5.4
 1. 校验 **tag 和 `<InstallerVersion>` 一致**(对不上直接失败,免得发出去版本号是乱的);
 2. 跑 `pack-release.ps1 -NoDesktop`;
 3. **体积自检** —— 超过 40 MB 就报错(那说明自包含开关又被人打开了);
-4. 算 SHA256,把 `DSH-Installer-Setup.exe` 传成 Release 资产。
+4. 算 SHA256，把构建出的 `DSH-Installer-Setup.exe` 复制并命名为 `Dafeiyu-GO-Setup <版本>.exe`，再传成 Release 资产。
 
 也可以在 Actions 页面点 `workflow_dispatch` 手动跑(那种情况没有 tag,跳过第 1 步校验)。
 
@@ -90,7 +91,7 @@ git push origin v1.5.4
 
 # 2. 出包
 .\pack-release.ps1 -NoDesktop
-#    产物:dist\DSH-Installer-Setup.exe
+#    内部产物:dist\DSH-Installer-Setup.exe；对外资产命名为 Dafeiyu-GO-Setup <版本>.exe
 
 # 3. 算哈希(发 Release 时写进去)
 (Get-FileHash .\dist\DSH-Installer-Setup.exe -Algorithm SHA256).Hash.ToLower()
@@ -100,7 +101,7 @@ git tag v1.4.9
 git push origin v1.4.9
 ```
 
-然后在 GitHub 上把 `dist\DSH-Installer-Setup.exe` 传成这个 tag 的 Release 资产。
+然后在 GitHub 上把它以 `Dafeiyu-GO-Setup <版本>.exe` 传成这个 tag 的 Release 资产。
 
 ---
 

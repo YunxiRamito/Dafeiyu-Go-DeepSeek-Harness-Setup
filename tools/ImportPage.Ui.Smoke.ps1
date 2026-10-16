@@ -71,7 +71,7 @@ try {
     foreach($width in 1200,800) {
         [ImportPageCapture]::SetWindowPos($handle,[IntPtr]::Zero,40,40,$width,760,4) | Out-Null
         Start-Sleep -Milliseconds 500
-        foreach($name in @('导入原有数据','你是否之前安装过 DSH 或者 Dafeiyu-Go？若没有，请点击下一步。','从旧的客户端恢复备份。','自动查找','扫描其他磁盘','从旧的 Dafeiyu-Go 导入','从旧的 DSH 客户端导入','下一步')) {Assert-Name $name}
+        foreach($name in @('导入原有数据','你是否之前安装过 DSH 或者 Dafeiyu-Go？若没有，请点击下一步。','从旧的客户端恢复备份。','自动查找','扫描其他磁盘','从旧的 Dafeiyu-Go 导入','从旧的 DSH 客户端导入','从官方迁移 EXE 导入','下一步')) {Assert-Name $name}
         if(Visible-Nodes | Where-Object {$_.Current.Name -eq '还没选。'}){throw 'Unselected path placeholder remains visible'}
         $auto=(Find-Button '自动查找').Current.BoundingRectangle
         $dym=(Find-Button '从旧的 Dafeiyu-Go 导入').Current.BoundingRectangle

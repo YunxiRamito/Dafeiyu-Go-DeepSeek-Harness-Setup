@@ -27,8 +27,10 @@ namespace DshInstaller
 
         public static string Pick(string title, string currentPath)
         {
-            return Show(title, currentPath, true);
+            return Show(title, currentPath, true, out _);
         }
+
+        public static string Pick(string title, string currentPath, out string error) => Show(title, currentPath, true, out error);
 
         /// <summary>
         /// 选一个**文件**(导入 .dym 备份包时用)。
@@ -39,14 +41,20 @@ namespace DshInstaller
         /// </summary>
         public static string PickFile(string title, string currentPath)
         {
-            return Show(title, currentPath, false);
+            return Show(title, currentPath, false, out _);
         }
 
-        private static string Show(string title, string currentPath, bool folders)
+        public static string PickFile(string title, string currentPath, out string error) => Show(title, currentPath, false, out error);
+
+        private static string Show(string title, string currentPath, bool folders, out string error)
         {
+            error = null;
+            IFileOpenDialog dialog = null;
+            IShellItem result = null;
+            IShellItem folder = null;
             try
             {
-                IFileOpenDialog dialog = (IFileOpenDialog)new FileOpenDialog();
+                dialog = (IFileOpenDialog)new FileOpenDialog();
 
                 // 选目录时多一个 FOS_PICKFOLDERS;选文件时只要求"真实存在"
                 uint options = FOS_FORCEFILESYSTEM | FOS_PATHMUSTEXIST;
@@ -68,7 +76,7 @@ namespace DshInstaller
                     try
                     {
                         Guid shellItemGuid = typeof(IShellItem).GUID;
-                        IShellItem folder = SHCreateItemFromParsingName(currentPath, IntPtr.Zero, ref shellItemGuid);
+                        folder = SHCreateItemFromParsingName(currentPath, IntPtr.Zero, ref shellItemGuid);
                         if (folder != null)
                         {
                             dialog.SetFolder(folder);
@@ -98,12 +106,8 @@ namespace DshInstaller
                     return null;
                 }
 
-                if (hr != 0)
-                {
-                    return null;
-                }
+                Marshal.ThrowExceptionForHR(hr);
 
-                IShellItem result = null;
                 dialog.GetResult(out result);
                 if (result == null)
                 {
@@ -126,9 +130,17 @@ namespace DshInstaller
                     Marshal.FreeCoTaskMem(buffer);
                 }
             }
-            catch
+            catch (Exception exception)
             {
+                error = exception.Message;
+                Shared.InstallLogger.Write("Native file/folder picker failed: " + exception);
                 return null;
+            }
+            finally
+            {
+                if (result != null) Marshal.ReleaseComObject(result);
+                if (folder != null) Marshal.ReleaseComObject(folder);
+                if (dialog != null) Marshal.ReleaseComObject(dialog);
             }
         }
 

@@ -172,7 +172,7 @@
 
 ```mermaid
 flowchart LR
-    S["安装器<br/>DSH-Installer-Setup.exe"] -->|部署 DSH 与便携组件| D["DSH 本体<br/>Node.js 服务"]
+    S["安装器<br/>Dafeiyu-GO-Setup 版本.exe"] -->|部署 DSH 与便携组件| D["DSH 本体<br/>Node.js 服务"]
     S -->|部署启动器| L["Dafeiyu-Go 启动器<br/>托盘 + 设置窗口"]
     L -->|启动 / 重启 / 停止| D
     L -->|读取发布清单，校验后自更新| L
@@ -184,7 +184,7 @@ flowchart LR
 
 ## 快速开始
 
-1. 在 [Releases](https://github.com/YunxiRamito/Dafeiyu-Go-DeepSeek-Harness-Setup/releases/latest) 下载 `DSH-Installer-Setup.exe` 并运行；国内也可从 [Gitee 发行版](https://gitee.com/Yunxiramito/Dafeiyu-Go-DeepSeek-Harness-Setup/releases) 下载。
+1. 在 [Releases](https://github.com/YunxiRamito/Dafeiyu-Go-DeepSeek-Harness-Setup/releases/latest) 下载 `Dafeiyu-GO-Setup <版本>.exe` 并运行；国内也可从 [Gitee 发行版](https://gitee.com/Yunxiramito/Dafeiyu-Go-DeepSeek-Harness-Setup/releases) 下载。安装器内部仍保留 `DSH-Installer-Setup.exe` 兼容名。
 2. 缺少运行库时，先确认下载与安装；按提示授予管理员权限。
 3. 选择下载源、安装范围与目录，再按需选择 pnpm / Git / Python、推荐插件、快捷方式和自启。
 4. 在确认页检查安装计划：目标目录、组件安装／复用、系统改动及提权原因；确认后点击「安装」。完成后通过启动器托盘或快捷方式打开 DSH。
@@ -234,13 +234,13 @@ flowchart LR
 
 ```powershell
 # 当前用户安装，不注册自启，安装后不启动
-.\DSH-Installer-Setup.exe --silent --scope=user --source=china --pnpm --git --no-autostart --no-launch --report=install.json
+& ".\Dafeiyu-GO-Setup 1.8.2.exe" --silent --scope=user --source=china --pnpm --git --no-autostart --no-launch --report=install.json
 
 # 按已有安装记录进入修复流程；无记录时退回普通安装
-.\DSH-Installer-Setup.exe --repair
+& ".\Dafeiyu-GO-Setup 1.8.2.exe" --repair
 
 # 预览页面（0 起编号）；仍可能写入日志、缓存与配置
-.\DSH-Installer-Setup.exe --page=4
+& ".\Dafeiyu-GO-Setup 1.8.2.exe" --page=4
 ```
 
 | 参数 | 用途 |
@@ -278,7 +278,7 @@ dotnet build src\DshInstaller\DshInstaller.csproj -c Release
 # 开发预览包
 .\pack-preview.ps1
 
-# 正式安装包：dist\DSH-Installer-Setup.exe，不复制到桌面
+# 正式安装包：dist\DSH-Installer-Setup.exe（内部构建名；对外发布时复制为 Dafeiyu-GO-Setup <版本>.exe），不复制到桌面
 .\pack-release.ps1 -NoDesktop
 ```
 
@@ -287,6 +287,10 @@ dotnet build src\DshInstaller\DshInstaller.csproj -c Release
 维护入口：[交接说明](HANDOVER.md) · [1.5.0 功能交接](HANDOVER-1.5.0-installer.md) · [项目状态](STATUS.md) · [发布流程](RELEASE.md)。历史文档与实现不一致时，以当前源码和发布产物为准。
 
 </details>
+
+## 参与贡献
+
+按功能板块定位源码、回归与跨仓边界，见 [贡献说明](CONTRIBUTING.md) 和 [功能贡献地图](docs/CONTRIBUTION-MAP.md)。欢迎提交范围明确、带复现与验证记录的 PR。
 
 ## 相关项目
 

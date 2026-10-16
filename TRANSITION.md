@@ -16,7 +16,7 @@
 
 ## 保持兼容的协议
 
-- 安装包文件名 `DSH-Installer-Setup.exe`
+- 对外安装包文件名 `Dafeiyu-GO-Setup <版本>.exe`；内部构建/payload 兼容名 `DSH-Installer-Setup.exe`
 - 卸载程序 `DSH-Uninstall.exe`
 - 启动器文件名 `DeepSeek Harness.exe`
 - 安装状态 `%LOCALAPPDATA%\DeepSeekHarness`

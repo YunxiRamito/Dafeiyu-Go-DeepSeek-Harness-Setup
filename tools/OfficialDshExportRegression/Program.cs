@@ -45,7 +45,7 @@ class Program
         Test("credentials-only HOME is described", () => { string alone = Path.Combine(fixture, "credentials-only"); Put("credentials-only/.credentials.yaml", "key: fixture"); Assert(OfficialDshExport.Describe(root, alone).Any(g => g.Id == OfficialDshExport.GroupCredentials)); });
         Test("profile-only plugin group is described", () => { Put("profile-only/profiles/web/package.json", "{}"); Assert(OfficialDshExport.Describe(root, Path.Combine(fixture, "profile-only")).Any(g => g.Id == "plugins")); });
         Test("shared Skill group is described", () => Assert(OfficialDshExport.Describe(root, home).Any(g => g.Id == OfficialDshExport.GroupSharedSkills)));
-        Test("source junction is skipped without traversal", () => { string link = Path.Combine(home, "sessions", "escape"); Directory.CreateSymbolicLink(link, Path.Combine(fixture, "outside")); });
+        Test("source junction is skipped without traversal", () => { string link = Path.Combine(home, "sessions", "escape"); CreateDirectoryJunction(link, Path.Combine(fixture, "outside")); });
         string[] ids = { "sessions", "skills", "plugins", "profiles", "official-credentials", "official-compatibility" };
         byte[] sourceHash = SHA256.HashData(File.ReadAllBytes(Path.Combine(home, "profiles/web/package.json")));
         Test("official SFX exports and validates", () => { var r = OfficialDshExport.Export(root, home, Chosen(ids), output, null, Console.WriteLine, CancellationToken.None); Assert(r.Ok, r.Error); Assert(r.Warnings.Any(w => w.Contains("outside-plugin"))); });
@@ -93,7 +93,7 @@ class Program
         Test("cancel after commit never destroys completed output", () => { using var cts = new CancellationTokenSource(); string committed = Path.Combine(fixture, "exports", "committed.exe"); var r = OfficialDshExport.Export(root, home, Chosen("sessions"), committed, (s,p) => { if (p == 100) cts.Cancel(); }, null, cts.Token); Assert(r.Ok && File.Exists(committed)); });
         Test("output in install root/HOME rejected", () => { Assert(!OfficialDshExport.Export(root, home, Chosen("sessions"), Path.Combine(root, "bad.exe"), null, null, CancellationToken.None).Ok); Assert(!OfficialDshExport.Export(root, home, Chosen("sessions"), Path.Combine(home, "bad.exe"), null, null, CancellationToken.None).Ok); });
         Test("tampered payload cannot write target", () => { string bad = Path.Combine(fixture, "corrupt.exe"); byte[] bytes = File.ReadAllBytes(output); bytes[^70] ^= 0xff; File.WriteAllBytes(bad, bytes); string badTarget = Path.Combine(fixture, "bad-target"); Run(helper, RestoreArgs(badTarget, targetAgents, ids).Concat(new[] { "--archive", bad }).ToArray(), 1); Assert(!Directory.Exists(badTarget)); });
-        Test("destination junction fails before writes", () => { string badTarget = Path.Combine(fixture, "junction-target"); Directory.CreateDirectory(badTarget); Directory.CreateSymbolicLink(Path.Combine(badTarget, "sessions"), Path.Combine(fixture, "outside")); Run(output, RestoreArgs(badTarget, targetAgents, new[] { "sessions" }), 1); Assert(!File.Exists(Path.Combine(fixture, "outside", "session-a/events.jsonl"))); });
+        Test("destination junction fails before writes", () => { string badTarget = Path.Combine(fixture, "junction-target"); Directory.CreateDirectory(badTarget); CreateDirectoryJunction(Path.Combine(badTarget, "sessions"), Path.Combine(fixture, "outside")); Run(output, RestoreArgs(badTarget, targetAgents, new[] { "sessions" }), 1); Assert(!File.Exists(Path.Combine(fixture, "outside", "session-a/events.jsonl"))); });
         Test("traversal ZIP rejected with valid footer", () => BadArchive("traversal", "data/home/sessions/../outside.txt", "home/sessions/../outside.txt", false, false));
         Test("duplicate ZIP rejected with valid footer", () => BadArchive("duplicate", "data/home/sessions/a.json", "home/sessions/a.json", true, false));
         Test("unlisted extra entries rejected", () => BadArchive("unlisted", "data/home/sessions/a.json", "home/sessions/a.json", false, true));
@@ -115,6 +115,29 @@ class Program
         { string refused = Path.Combine(fixture, "not-confirmed"); var r = Migration.Restore(output, refused, targetAgents, install, ids, true, false, null, CancellationToken.None); Assert(!r.Ok && !Directory.Exists(refused)); });
         Test("no restore staging survives", () => Assert(!Directory.GetDirectories(fixture, ".official-dsh-restore-*", SearchOption.TopDirectoryOnly).Any() && !Directory.GetDirectories(Path.Combine(fixture, "exports"), ".official-dsh-restore-*").Any()));
         Console.WriteLine("PASS " + passed + " filesystem/SFX/actual EXE cases. Evidence: " + fixture);
+    }
+    static void CreateDirectoryJunction(string link, string target)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(link));
+        if (OperatingSystem.IsWindows())
+        {
+            // Real directory reparse points need no symbolic-link privilege. Both
+            // source traversal and destination rejection assertions remain active.
+            string powershell = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "WindowsPowerShell", "v1.0", "powershell.exe");
+            var start = new ProcessStartInfo(powershell) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardError = true, RedirectStandardOutput = true };
+            start.ArgumentList.Add("-NoProfile");
+            start.ArgumentList.Add("-NonInteractive");
+            start.ArgumentList.Add("-Command");
+            start.ArgumentList.Add("New-Item -ItemType Junction -Path '" + link.Replace("'", "''") + "' -Target '" + target.Replace("'", "''") + "' -ErrorAction Stop | Out-Null");
+            using var process = Process.Start(start);
+            Task<string> stdout = process.StandardOutput.ReadToEndAsync(), stderr = process.StandardError.ReadToEndAsync();
+            if (!process.WaitForExit(30000)) { process.Kill(true); throw new Exception("Junction fixture creation timed out."); }
+            Task.WaitAll(stdout, stderr);
+            Assert(process.ExitCode == 0, "Junction fixture creation failed: " + stderr.Result + stdout.Result);
+        }
+        else Directory.CreateSymbolicLink(link, target);
+        Assert((File.GetAttributes(link) & FileAttributes.ReparsePoint) != 0, "Fixture must be a real reparse point.");
+        Assert(String.Equals(Path.GetFullPath(Directory.ResolveLinkTarget(link, true).FullName), Path.GetFullPath(target), StringComparison.OrdinalIgnoreCase), "Fixture must point at the external target.");
     }
     static string[] RestoreArgs(string target, string shared, string[] ids) => new[] { "--restore", "--home", target, "--agents", shared, "--official-root", install, "--groups", string.Join(',', ids), "--confirm-closed", "--merge-plugins" };
     static void BadArchive(string name, string path, string target, bool duplicate, bool extra, bool wrongHash = false, byte[] data = null, bool symlink = false)

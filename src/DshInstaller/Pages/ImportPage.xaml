@@ -55,6 +55,7 @@
                             Click="PickButton_Click" />
                         <Button x:Name="PickDshButton" Grid.Column="1" HorizontalAlignment="Stretch" Click="PickDshButton_Click" />
                     </Grid>
+                    <Button x:Name="PickOfficialArchiveButton" HorizontalAlignment="Stretch" Click="PickOfficialArchiveButton_Click" />
                     <TextBlock x:Name="ArchiveText" FontSize="12.5" TextWrapping="Wrap" Foreground="{ThemeResource SecondaryTextBrush}" Visibility="Collapsed" />
                     <ComboBox x:Name="DshProfileBox" Header="来源 Profile" Visibility="Collapsed" HorizontalAlignment="Stretch" SelectionChanged="DshProfileBox_SelectionChanged" />
                 </StackPanel>

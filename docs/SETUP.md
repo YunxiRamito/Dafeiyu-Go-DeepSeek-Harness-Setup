@@ -39,7 +39,7 @@ $env:NUGET_PACKAGES = 'G:\DeepSeek DSH\.nuget-packages'
 
 ```
 dist\
-├─ DSH-Installer-Setup.exe    发给用户的单文件安装包(引导 + 附加 payload,约 10.5 MB)
+├─ DSH-Installer-Setup.exe    内部构建名；对外发布时命名为 Dafeiyu-GO-Setup <版本>.exe
 ├─ Boot.exe                   引导程序(.NET Framework,csc 直编)
 ├─ DSH-Uninstall.exe          独立卸载程序(会被安装器铺到目标机器)
 ├─ payload.zip                安装器本体那一段(附加在 Setup.exe 末尾)
