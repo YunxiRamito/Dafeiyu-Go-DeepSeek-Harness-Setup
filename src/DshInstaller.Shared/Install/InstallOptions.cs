@@ -155,10 +155,12 @@ namespace DshInstaller.Shared.Install
             {
                 return false;
             }
-            if (string.Equals(id, "node", System.StringComparison.OrdinalIgnoreCase)
-                && BackendDownloadSource.IsSelected(SourcePreference)
-                && !(item.Version ?? "").Trim().TrimStart('v', 'V').StartsWith("22.", System.StringComparison.Ordinal))
-                return false;
+            if (string.Equals(id, "node", System.StringComparison.OrdinalIgnoreCase))
+            {
+                string version = (item.Version ?? "").Trim().TrimStart('v', 'V');
+                if (!version.StartsWith("22.", System.StringComparison.Ordinal)
+                    && !version.StartsWith("24.", System.StringComparison.Ordinal)) return false;
+            }
 
             try
             {

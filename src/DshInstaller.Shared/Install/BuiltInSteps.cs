@@ -278,11 +278,13 @@ namespace DshInstaller.Shared.Install
                 // 那时候这里一"跳过",后面就报"未找到 npm(Node 步骤应已先完成)",
                 // 而日志上 Node 那步还显示成功,极难查(实测踩过)。
                 bool bundleNodeCompatible = true;
-                if (BackendDownloadSource.IsSelected(o.SourcePreference) && !o.DryRun)
+                if (!o.DryRun)
                 {
                     var existingNode = ProcessRunner.Run(nodeExe, "--version", null, 15000, cancellationToken: token);
-                    bundleNodeCompatible = existingNode.Ok && existingNode.StandardOutput.Trim().StartsWith("v22.", StringComparison.Ordinal);
-                    if (!bundleNodeCompatible) context.Log("完整 DSH 本地包需要 Node 22，正在替换组件目录中的不兼容版本。");
+                    string existingVersion = existingNode.StandardOutput.Trim();
+                    bundleNodeCompatible = existingNode.Ok && (existingVersion.StartsWith("v22.", StringComparison.Ordinal)
+                        || existingVersion.StartsWith("v24.", StringComparison.Ordinal));
+                    if (!bundleNodeCompatible) context.Log("完整 DSH 本地包需要 Node 22/24，正在替换组件目录中的不兼容版本。");
                 }
                 if (File.Exists(Path.Combine(nodeDir, "npm.cmd")) && bundleNodeCompatible)
                 {
@@ -424,7 +426,7 @@ namespace DshInstaller.Shared.Install
             InstallOptions o = context.Options;
             string marker = Path.Combine(o.DshRoot, WellKnown.DshMarker);
 
-            if (o.UseExistingDsh && File.Exists(marker))
+            if (o.UseExistingDsh && !o.ForceReinstall && !o.Repair && File.Exists(marker))
             {
                 LogExistingDshVersion(context, o.DshRoot);
                 context.Report(SharedText.T("使用现有安装,跳过下载", "Using the existing installation"), 100);
@@ -432,7 +434,7 @@ namespace DshInstaller.Shared.Install
                 return;
             }
 
-            if (File.Exists(marker))
+            if (!o.ForceReinstall && !o.Repair && File.Exists(marker))
             {
                 LogExistingDshVersion(context, o.DshRoot);
                 context.Report(SharedText.T("已安装,跳过", "Already installed, skipping"), 100);
@@ -448,194 +450,16 @@ namespace DshInstaller.Shared.Install
 
             string requestedVersion = string.IsNullOrWhiteSpace(o.DshVersion) ? WellKnown.DshPackageVersion : SanitizeVersionSpec(o.DshVersion);
             if (string.IsNullOrWhiteSpace(requestedVersion)) throw new InvalidOperationException("DSH 版本说明包含不支持的字符。");
-            if (BackendDownloadSource.IsSelected(o.SourcePreference))
-            {
-                string exact = await Task.Run(() => DshVersionResolver.Resolve(requestedVersion,
-                    p => context.Report("正在解析 DSH " + requestedVersion + " 版本 · " + p.SourceLabel),
-                    () => token.IsCancellationRequested), token).ConfigureAwait(false);
-                context.Log("DSH 版本选择 " + requestedVersion + " → " + exact);
-                await DshOfflineBundle.InstallAsync(context, exact, ResolveNodeDirectory(o), token).ConfigureAwait(false);
-                return;
-            }
-
-            string npmCmd = FindNpm(o);
-            if (npmCmd == null)
-            {
-                throw new InvalidOperationException(
-                    SharedText.T("未找到 npm(Node 步骤应已先完成)", "npm was not found (the Node step should run first)"));
-            }
-
-            bool dshExisted = Directory.Exists(o.DshRoot);
-            Directory.CreateDirectory(o.DshRoot);
-            if (!dshExisted)
-            {
-                context.NoteCreatedDirectory(o.DshRoot);
-            }
-
-            context.Report(SharedText.T("安装中 · 正在获取本体依赖（耗时较长）", "Installing · fetching the core dependencies (this may take a while)"), 20);
-
-            string registry = MirrorSource.NpmRegistry(o.SourcePreference);
-
-            // 版本页选了就按它装,没选就用默认那个范围。
-            // 版本说明来自界面输入,拼进命令行之前先筛一遍字符 —— 它最终会进一个 .cmd,
-            // 不筛的话输入里带个引号或 & 就能往命令行里塞东西。
-            string dshSpec = requestedVersion;
-            if (DshVersionResolver.IsExact(requestedVersion) || System.Text.RegularExpressions.Regex.IsMatch(requestedVersion, @"^[A-Za-z][A-Za-z0-9._-]*$"))
-            {
-                dshSpec = await Task.Run(() => DshVersionResolver.Resolve(requestedVersion,
-                    p => context.Report("正在解析 DSH " + requestedVersion + " 版本 · " + p.SourceLabel),
-                    () => token.IsCancellationRequested), token).ConfigureAwait(false);
-                context.Log("DSH 版本选择 " + requestedVersion + " → " + dshSpec);
-            }
-
-            // 包名必须整体加引号:版本范围里的 ^ 在 cmd.exe 里是转义字符,
-            // 不加引号会被 cmd 吃掉,变成 "@deepseek-ai/dsh@0.1.5-rc.1" 之类的错版本 → npm 退出码 1。
-            string arguments =
-                "install \"" + WellKnown.DshPackage + "@" + dshSpec + "\""
-                + " --prefix \"" + o.DshRoot + "\""
-                + " --registry " + registry
-                + " --no-audit --no-fund --loglevel=http";
-
-            context.Log("npm " + arguments);
-            context.Log("node 目录:" + ResolveNodeDirectory(o));
-
-            // npm 走一个临时 .cmd 包装:
-            //   1. 显式 set PATH 带上便携版 node 目录 —— 否则 npm 的生命周期脚本
-            //      (koffi 的 cnoke.cjs 就调 node)会报 "'node' is not recognized"(实测踩过);
-            //      复用本机 Node 时这个目录就是本机那份所在目录,道理一样;
-            //   2. 顺便避开长命令行在 cmd 里的引号地狱。
-            string nodeDir = ResolveNodeDirectory(o);
-            string wrapper = Path.Combine(o.TempRoot, "npm-install.cmd");
-            using var cleanup = new TemporaryCleanup(wrapper);
-            Directory.CreateDirectory(o.TempRoot);
-
-            System.Text.StringBuilder script = new System.Text.StringBuilder();
-
-            // 头一行必须先切到 UTF-8 代码页,再写别的东西。原因有两个:
-            //   1. .cmd 是 cmd.exe 按**当前代码页**逐行解码的。中文路径写在里面,
-            //      在 GBK 系统上会被读成乱码 → npm 拿着一个不存在的目录去装,
-            //      直接退出码 1(实测踩过,而且报错本身还是乱码,特别难查);
-            //   2. 顺带让 npm 的输出也变成 UTF-8,和 ProcessRunner 那边的解码对上,
-            //      日志里就不会再是一串方块。
-            //
-            // 注意 File.WriteAllText 这里**不能**用 Encoding.Default ——
-            // 在 .NET Core/.NET 8 里它已经变成 UTF-8 了(不是 ANSI),正是它把路径写坏的。
-            script.AppendLine("@echo off");
-            script.AppendLine("chcp 65001 >nul");
-            script.AppendLine("set \"PATH=" + nodeDir + ";%PATH%\"");
-            script.AppendLine("\"" + npmCmd + "\" " + arguments);
-            File.WriteAllText(wrapper, script.ToString(), new System.Text.UTF8Encoding(false));
-
-            context.Log("node 目录:" + nodeDir);
-            context.Log("包装脚本:" + wrapper);
-
-            // npm 不给百分比,但 node_modules 的体积是个可靠的代理:
-            // 实测装完约 223 MB,所以按"已获取多少 MB"报进度,比干转圈强得多。
-            string modulesDir = Path.Combine(o.DshRoot, "node_modules");
-            ProcessRunner.Result result;
-            using (System.Threading.CancellationTokenSource pollCancel =
-                System.Threading.CancellationTokenSource.CreateLinkedTokenSource(token))
-            {
-                Task poller = Task.Run(async delegate
+            string exact = await Task.Run(() => DshVersionResolver.Resolve(requestedVersion,
+                p =>
                 {
-                    while (!pollCancel.IsCancellationRequested)
-                    {
-                        try
-                        {
-                            double mb = DirectorySizeMb(modulesDir);
-                            double percent = 20 + Math.Min(0.95, mb / ExpectedDshSizeMb) * 75;
-
-                            // npm 前几十秒在解析依赖树,一个字节都不写 ——
-                            // 这段时间一直显示 0.0 MB 会让人以为卡死了,所以换成"正在初始化"。
-                            string detail;
-                            if (mb < 0.5)
-                            {
-                                detail = SharedText.T(
-                                    "安装中 · 正在初始化 npm，可能需要一些时间…",
-                                    "Installing · initializing npm, this may take a while…");
-                            }
-                            else
-                            {
-                                detail = SharedText.T("安装中 · 正在部署 DSH 核心 ", "Installing · deploying the DSH core ")
-                                    + mb.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)
-                                    + " / " + ExpectedDshSizeMb.ToString("0")
-                                    + " MB";
-                            }
-
-                            context.Report(detail, percent);
-                        }
-                        catch
-                        {
-                        }
-
-                        try
-                        {
-                            await Task.Delay(1200, pollCancel.Token).ConfigureAwait(false);
-                        }
-                        catch
-                        {
-                            break;
-                        }
-                    }
-                }, token);
-
-                ProcessRunner.Result runResult;
-                try
-                {
-                    runResult = await Task.Run(delegate
-                    {
-                        return ProcessRunner.Run(
-                            "cmd.exe",
-                            "/c \"" + wrapper + "\"",
-                            o.DshRoot,
-                            1800000,
-                            delegate(string line)
-                            {
-                                if (!string.IsNullOrWhiteSpace(line))
-                                {
-                                    context.Log("  " + line.Trim());
-                                    if (line.Contains("npm http fetch", StringComparison.Ordinal))
-                                        context.Report("正在获取依赖 · " + line.Trim().Replace("npm http fetch ", ""));
-                                }
-                            },
-                            nodeDir,
-                            PackageDownloadEnvironment.Create(o.SourcePreference),
-                            token);
-                    }, token).ConfigureAwait(false);
-                }
-                finally
-                {
-                    pollCancel.Cancel();
-                }
-
-                result = runResult;
-                try
-                {
-                    await poller.ConfigureAwait(false);
-                }
-                catch
-                {
-                }
-            }
-
-            if (!result.Ok)
-            {
-                throw new InvalidOperationException(
-                    SharedText.T("npm 安装失败(退出码 " + result.ExitCode + ")", "npm failed (exit code " + result.ExitCode + ")")
-                    + Environment.NewLine + Tail(result.Combined, 12));
-            }
-
-            if (!File.Exists(marker))
-            {
-                throw new InvalidOperationException(
-                    SharedText.T("npm 已结束,但未找到 DSH 本体", "npm finished but the DSH core was not found")
-                    + ":" + marker);
-            }
-
-            context.Log("DSH 本体已安装:" + o.DshRoot);
-            context.Report(SharedText.T("完成", "Done"), 100);
+                    context.Report("检查 DSH 版本");
+                    context.Log("正在解析 DSH " + requestedVersion + " 版本；下载源：" + p.SourceLabel);
+                },
+                () => token.IsCancellationRequested), token).ConfigureAwait(false);
+            context.Log("DSH 版本选择 " + requestedVersion + " → " + exact + "；优先使用完整依赖归档，服务器缺包时在隔离目录构建同一精确版本。");
+            await DshOfflineBundle.InstallAsync(context, exact, ResolveNodeDirectory(o), token).ConfigureAwait(false);
         }
-
         // ---------------------------------------------------------------- 启动器
 
         public static InstallStep Launcher(InstallOptions options)
@@ -2383,39 +2207,6 @@ namespace DshInstaller.Shared.Install
         }
         private static double DownloadPercent(DownloadProgress progress, double from, double to)
             => progress.IsCachePreparing || progress.Fraction < 0 ? -1 : from + progress.Fraction * (to - from);
-        /// <summary>DSH 本体装完大约这个体积(MB),用来把 npm 的体积增长折算成百分比。</summary>
-        private const double ExpectedDshSizeMb = 230;
-
-        /// <summary>递归算目录体积(MB)。算不出来返回 0,不抛。</summary>
-        private static double DirectorySizeMb(string directory)
-        {
-            try
-            {
-                if (!Directory.Exists(directory))
-                {
-                    return 0;
-                }
-
-                long total = 0;
-                string[] files = Directory.GetFiles(directory, "*", SearchOption.AllDirectories);
-                for (int i = 0; i < files.Length; i++)
-                {
-                    try
-                    {
-                        total += new FileInfo(files[i]).Length;
-                    }
-                    catch
-                    {
-                    }
-                }
-
-                return total / 1048576.0;
-            }
-            catch
-            {
-                return 0;
-            }
-        }
         /// <summary>这次真正要用哪个 node 目录:复用本机的那份,还是自己解的便携版。</summary>
         private static string ResolveNodeDirectory(InstallOptions options)
         {
